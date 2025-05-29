@@ -34,7 +34,7 @@ t.start()
 
 # Patch Orca functions
 old_speak = SpeechServer._speak
-old_speakCharacter = SpeechServer.speakCharacter
+old_speakCharacter = SpeechServer.speak_character
 old_stop = SpeechServer.stop
 
 def my_speak(self, text, acss, **kw):
@@ -42,16 +42,16 @@ def my_speak(self, text, acss, **kw):
         transport.send(type="speak", sequence=text)
     return old_speak(self, text, acss, **kw)
 
-def my_speakCharacter(self, character, acss=None):
+def my_speak_character(self, character, acss=None):
     transport.send(type="speak", sequence=[character])
-    return old_speakCharacter(self, character, acss)
+    return old_speak_character(self, character, acss)
 
 def my_stop(self):
     transport.send(type="cancel")
     return old_stop(self)
 
 SpeechServer._speak = my_speak
-SpeechServer.speakCharacter = my_speakCharacter
+SpeechServer.speak_character = my_speak_character
 SpeechServer.stop = my_stop
 
 print("Orca patched")
