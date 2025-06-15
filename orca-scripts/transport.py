@@ -80,7 +80,10 @@ class TCPTransport(Transport):
 		if self.timeout:
 			server_sock.settimeout(self.timeout)
 		server_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-		server_sock = ssl.wrap_socket(server_sock)
+		context = ssl.SSLContext(PROTOCOL_VERSION)
+		context.check_hostname = False
+		context.load_default_certs()
+		server_sock = context.wrap_socket(server_sock)
 		return server_sock
 
 	def handle_server_data(self):
