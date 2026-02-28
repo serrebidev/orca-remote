@@ -123,10 +123,12 @@ try:
             return _original_process_key(event_self)
 
         # Forward all other keys to NVDA
-        pressed = event_self.type == input_event.KeyboardEvent.TYPE_PRINTABLE or \
-                  (hasattr(event_self, 'pressed') and event_self.pressed)
         if hasattr(event_self, 'is_pressed_key'):
             pressed = event_self.is_pressed_key()
+        elif hasattr(event_self, 'pressed'):
+            pressed = event_self.pressed
+        else:
+            pressed = True
 
         mod_names = []
         if modifiers & (1 << 0):  # Shift
