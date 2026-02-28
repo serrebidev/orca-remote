@@ -222,7 +222,9 @@ def _register_gestures():
     Gesture map (mirrors NVDA Remote where possible):
       Orca+Alt+Tab       = Toggle local/remote control  (NVDA: F11)
       Orca+Alt+PageUp    = Connect dialog               (NVDA: Alt+NVDA+PageUp)
+      Orca+Alt+C         = Connect dialog (alt binding for keyboards without PageUp)
       Orca+Alt+PageDown  = Disconnect                   (NVDA: Alt+NVDA+PageDown)
+      Orca+Alt+D         = Disconnect (alt binding for keyboards without PageDown)
       Ctrl+Shift+Orca+C  = Push clipboard               (NVDA: Ctrl+Shift+NVDA+C)
       Orca+Alt+M         = Toggle mute remote
       Orca+Shift+Delete  = Send Ctrl+Alt+Del to remote
@@ -240,14 +242,32 @@ def _register_gestures():
         ctrl_shift_orca = getattr(keybindings, 'CTRL_SHIFT_ORCA_MODIFIER_MASK',
                                   ctrl_mod | shift_mod | orca_mod)
 
+        print("Orca Remote: Modifier masks: orca=%s alt=%s shift=%s ctrl=%s default_mask=%s"
+              % (hex(orca_mod), hex(alt_mod), hex(shift_mod), hex(ctrl_mod), hex(default_mask)))
+        print("Orca Remote: Combined masks: orca_alt=%s orca_shift=%s ctrl_shift_orca=%s"
+              % (hex(orca_alt), hex(orca_shift), hex(ctrl_shift_orca)))
+
+        # Check which constants came from Orca vs our fallbacks
+        for name in ('ORCA_MODIFIER_MASK', 'ALT_MODIFIER_MASK', 'SHIFT_MODIFIER_MASK',
+                     'CTRL_MODIFIER_MASK', 'defaultModifierMask',
+                     'ORCA_ALT_MODIFIER_MASK', 'ORCA_SHIFT_MODIFIER_MASK'):
+            if hasattr(keybindings, name):
+                print("Orca Remote:   keybindings.%s = %s (from Orca)" % (name, hex(getattr(keybindings, name))))
+            else:
+                print("Orca Remote:   keybindings.%s = NOT FOUND (using fallback)" % name)
+
         gesture_bindings = [
             # (key, modifier_mask, required_modifiers, handler, description)
             ("Tab",       default_mask, orca_alt,       _toggle_remote_control,
              "Toggle local/remote control"),
             ("Page_Up",   default_mask, orca_alt,       _show_connect_dialog,
-             "Connect to remote"),
+             "Connect to remote (PageUp)"),
+            ("KP_Page_Up", default_mask, orca_alt,      _show_connect_dialog,
+             "Connect to remote (Keypad PageUp)"),
             ("Page_Down", default_mask, orca_alt,       _disconnect,
-             "Disconnect from remote"),
+             "Disconnect from remote (PageDown)"),
+            ("KP_Page_Down", default_mask, orca_alt,    _disconnect,
+             "Disconnect from remote (Keypad PageDown)"),
             ("c",         default_mask, ctrl_shift_orca, _push_clipboard,
              "Push clipboard to remote"),
             ("m",         default_mask, orca_alt,       _toggle_mute,
@@ -256,30 +276,48 @@ def _register_gestures():
              "Send Ctrl+Alt+Del to remote"),
         ]
 
+        # Alternative bindings for keyboards without PageUp/PageDown (e.g. Mac)
+        alt_bindings = [
+            ("c",         default_mask, orca_alt,       _show_connect_dialog,
+             "Connect to remote (Alt: Orca+Alt+C)"),
+            ("d",         default_mask, orca_alt,       _disconnect,
+             "Disconnect from remote (Alt: Orca+Alt+D)"),
+        ]
+
         # Get the default script to register bindings
         default_script = None
         try:
             script_manager = orca.orca.getScriptManager()
             default_script = script_manager.getDefaultScript()
+            print("Orca Remote: Got default script via getScriptManager(): %s" % type(default_script).__name__)
         except AttributeError:
             sm = getattr(orca.orca, '_scriptManager', None)
             if sm and hasattr(sm, 'getDefaultScript'):
                 default_script = sm.getDefaultScript()
+                print("Orca Remote: Got default script via _scriptManager: %s" % type(default_script).__name__)
 
         if not default_script or not hasattr(default_script, 'keyBindings'):
             print("Orca Remote: Could not get default script for keybinding registration")
+            print("Orca Remote:   default_script = %s" % default_script)
+            if default_script:
+                print("Orca Remote:   attrs = %s" % dir(default_script))
             return
 
-        for key, mask, mods, handler, desc in gesture_bindings:
-            binding = keybindings.KeyBinding(key, mask, mods, handler, 1)
-            default_script.keyBindings.add(binding)
+        all_bindings = gesture_bindings + alt_bindings
+        for key, mask, mods, handler, desc in all_bindings:
+            try:
+                binding = keybindings.KeyBinding(key, mask, mods, handler, 1)
+                default_script.keyBindings.add(binding)
+                print("Orca Remote:   Registered: %s (key=%s mask=%s mods=%s)"
+                      % (desc, key, hex(mask), hex(mods)))
+            except Exception as e:
+                print("Orca Remote:   FAILED to register %s: %s" % (desc, e))
 
         if hasattr(default_script.keyBindings, 'setup'):
             default_script.keyBindings.setup()
+            print("Orca Remote: Called keyBindings.setup()")
 
-        print("Orca Remote: Gestures registered:")
-        for key, mask, mods, handler, desc in gesture_bindings:
-            print("  %s" % desc)
+        print("Orca Remote: All gestures registered successfully")
 
     except Exception:
         traceback.print_exc()
