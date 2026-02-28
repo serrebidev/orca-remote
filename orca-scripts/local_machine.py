@@ -24,13 +24,24 @@ class LocalMachine:
         if self.is_muted or sequence is None:
             return
         try:
-            import orca.speech as speech
             if isinstance(sequence, list):
                 text = " ".join(str(s) for s in sequence if isinstance(s, str))
             else:
                 text = str(sequence)
             if text:
-                speech.speak(text)
+                # Stop current speech before speaking to allow interruption,
+                # just like Orca does on each navigation event.
+                # NVDA SPRI_NEXT (priority 0) means queue; all others interrupt.
+                if priority != 0:
+                    local_stop = getattr(self, '_local_stop', None)
+                    if local_stop is not None:
+                        local_stop()
+                local_speak = getattr(self, '_local_speak', None)
+                if local_speak is not None:
+                    local_speak(text)
+                else:
+                    import orca.speech as speech
+                    speech.speak(text)
         except Exception:
             log.exception("Failed to speak remote text")
 
@@ -39,8 +50,12 @@ class LocalMachine:
         if self.is_muted:
             return
         try:
-            import orca.speech as speech
-            speech.stop()
+            local_stop = getattr(self, '_local_stop', None)
+            if local_stop is not None:
+                local_stop()
+            else:
+                import orca.speech as speech
+                speech.stop()
         except Exception:
             log.exception("Failed to cancel speech")
 

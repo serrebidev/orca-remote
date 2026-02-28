@@ -20,6 +20,113 @@ from serializer import JSONSerializer
 from transport import RelayTransport
 from remote_controller import RemoteController
 
+_DBG_LOG = os.path.expanduser("~/.local/share/orca/orca-remote-debug.log")
+
+def _dbg(msg):
+    try:
+        with open(_DBG_LOG, "a") as f:
+            import time
+            f.write("[%.3f] %s\n" % (time.time(), msg))
+    except Exception:
+        pass
+
+# ---- X11 keyval name → Windows VK code ----
+# Maps Gdk keyval_name strings to (vk_code, scan_code, extended).
+# This is the format NVDA Remote's protocol expects.
+_X11_TO_VK = {}
+# Letters a-z (VK 0x41-0x5A, scan codes for US QWERTY)
+for _ch, _sc in zip("abcdefghijklmnopqrstuvwxyz",
+                     [0x1E,0x30,0x2E,0x20,0x12,0x21,0x22,0x23,0x17,
+                      0x24,0x25,0x26,0x32,0x31,0x18,0x19,0x10,0x13,
+                      0x1F,0x14,0x16,0x2F,0x11,0x2D,0x15,0x2C]):
+    _vk = ord(_ch.upper())
+    _X11_TO_VK[_ch] = (_vk, _sc, False)   # lowercase keyval
+    _X11_TO_VK[_ch.upper()] = (_vk, _sc, False)  # uppercase (Shift held)
+# Digits 0-9 (VK 0x30-0x39)
+for _ch, _sc in zip("1234567890", [0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0A,0x0B]):
+    _X11_TO_VK[_ch] = (ord(_ch), _sc, False)
+_X11_TO_VK['0'] = (0x30, 0x0B, False)
+# Function keys
+for _i, _sc in enumerate([0x3B,0x3C,0x3D,0x3E,0x3F,0x40,0x41,0x42,0x43,0x44,0x57,0x58], 1):
+    _X11_TO_VK['F%d' % _i] = (0x6F + _i, _sc, False)
+# Special keys
+_X11_TO_VK.update({
+    'Return':         (0x0D, 0x1C, False),
+    'BackSpace':      (0x08, 0x0E, False),
+    'Tab':            (0x09, 0x0F, False),
+    'Escape':         (0x1B, 0x01, False),
+    'space':          (0x20, 0x39, False),
+    'Delete':         (0x2E, 0x53, True),
+    'Insert':         (0x2D, 0x52, True),
+    'Home':           (0x24, 0x47, True),
+    'End':            (0x23, 0x4F, True),
+    'Prior':          (0x21, 0x49, True),   # Page Up
+    'Next':           (0x22, 0x51, True),   # Page Down
+    'Left':           (0x25, 0x4B, True),
+    'Up':             (0x26, 0x48, True),
+    'Right':          (0x27, 0x4D, True),
+    'Down':           (0x28, 0x50, True),
+    'Print':          (0x2C, 0x37, True),
+    'Scroll_Lock':    (0x91, 0x46, False),
+    'Pause':          (0x13, 0x45, False),
+    'Caps_Lock':      (0x14, 0x3A, False),
+    'Num_Lock':       (0x90, 0x45, True),
+    # Modifiers
+    'Shift_L':        (0x10, 0x2A, False),
+    'Shift_R':        (0x10, 0x36, False),
+    'Control_L':      (0x11, 0x1D, False),
+    'Control_R':      (0x11, 0x1D, True),
+    'Alt_L':          (0x12, 0x38, False),
+    'Alt_R':          (0x12, 0x38, True),
+    'Super_L':        (0x5B, 0x5B, True),
+    'Super_R':        (0x5C, 0x5C, True),
+    'Menu':           (0x5D, 0x5D, True),
+    # Punctuation (US QWERTY)
+    'minus':          (0xBD, 0x0C, False),
+    'equal':          (0xBB, 0x0D, False),
+    'bracketleft':    (0xDB, 0x1A, False),
+    'bracketright':   (0xDD, 0x1B, False),
+    'backslash':      (0xDC, 0x2B, False),
+    'semicolon':      (0xBA, 0x27, False),
+    'apostrophe':     (0xDE, 0x28, False),
+    'grave':          (0xC0, 0x29, False),
+    'comma':          (0xBC, 0x33, False),
+    'period':         (0xBE, 0x34, False),
+    'slash':          (0xBF, 0x35, False),
+    # Numpad
+    'KP_0':           (0x60, 0x52, False),
+    'KP_1':           (0x61, 0x4F, False),
+    'KP_2':           (0x62, 0x50, False),
+    'KP_3':           (0x63, 0x51, False),
+    'KP_4':           (0x64, 0x4B, False),
+    'KP_5':           (0x65, 0x4C, False),
+    'KP_6':           (0x66, 0x4D, False),
+    'KP_7':           (0x67, 0x47, False),
+    'KP_8':           (0x68, 0x48, False),
+    'KP_9':           (0x69, 0x49, False),
+    'KP_Decimal':     (0x6E, 0x53, False),
+    'KP_Multiply':    (0x6A, 0x37, False),
+    'KP_Add':         (0x6B, 0x4E, False),
+    'KP_Subtract':    (0x6D, 0x4A, False),
+    'KP_Divide':      (0x6F, 0x35, True),
+    'KP_Enter':       (0x0D, 0x1C, True),
+    'KP_Insert':      (0x60, 0x52, False),
+    'KP_Delete':      (0x6E, 0x53, False),
+    'KP_Home':        (0x67, 0x47, False),
+    'KP_End':         (0x61, 0x4F, False),
+    'KP_Prior':       (0x69, 0x49, False),
+    'KP_Next':        (0x63, 0x51, False),
+    'KP_Up':          (0x68, 0x48, False),
+    'KP_Down':        (0x62, 0x50, False),
+    'KP_Left':        (0x64, 0x4B, False),
+    'KP_Right':       (0x66, 0x4D, False),
+    'KP_Begin':       (0x65, 0x4C, False),
+})
+
+def _key_to_vk(keyval_name):
+    """Return (vk_code, scan_code, extended) for a Gdk keyval_name, or None."""
+    return _X11_TO_VK.get(keyval_name)
+
 # ---- Transport Setup ----
 
 mySerializer = JSONSerializer()
@@ -41,6 +148,7 @@ def _speak_message(text):
 # ---- Remote Controller ----
 
 controller = RemoteController(transport, speech_callback=_speak_message)
+
 
 # ---- Connection Thread ----
 # Only auto-connect if real connection details were provided (not the
@@ -69,21 +177,64 @@ old_speakCharacter = SpeechServer.speak_character
 old_stop = SpeechServer.stop
 
 def my_speak(self, text, acss, **kw):
-    if text:
+    # Only forward Orca's own speech when acting as slave (being controlled).
+    # In master mode we receive NVDA's speech; forwarding it back causes a loop.
+    if text and transport.connected and transport.connection_type == "slave":
         transport.send(type="speak", sequence=text)
     return old_speak(self, text, acss, **kw)
 
 def my_speak_character(self, character, acss=None):
-    transport.send(type="speak", sequence=[character])
+    if transport.connected and transport.connection_type == "slave":
+        transport.send(type="speak", sequence=[character])
     return old_speakCharacter(self, character, acss)
 
 def my_stop(self):
-    transport.send(type="cancel")
+    # Only forward cancel when acting as slave; in master mode this echoes
+    # our cancel back to NVDA and cuts off its speech.
+    if transport.connected and transport.connection_type == "slave":
+        transport.send(type="cancel")
     return old_stop(self)
 
 SpeechServer._speak = my_speak
 SpeechServer.speak_character = my_speak_character
 SpeechServer.stop = my_stop
+
+def _get_speech_server():
+    """Return the active Orca SpeechServer instance, or None."""
+    try:
+        import orca.speech as speech
+        return speech._state.server
+    except Exception:
+        return None
+
+def _local_only_stop():
+    """Stop local Orca speech directly via the speech server (no relay forwarding).
+
+    speech.stop() does not exist in this version of Orca; we must call old_stop
+    on the SpeechServer instance directly.
+    """
+    server = _get_speech_server()
+    if server is not None:
+        old_stop(server)
+
+def _local_only_speak(text):
+    """Speak text locally via the speech server (no relay forwarding).
+
+    Bypasses my_speak entirely so the text is not echoed back to the relay.
+    """
+    server = _get_speech_server()
+    if server is not None:
+        old_speak(server, text, None)
+    else:
+        # Fallback if server not yet initialised
+        try:
+            import orca.speech as speech
+            speech.speak(text)
+        except Exception:
+            pass
+
+controller.local_machine._local_stop = _local_only_stop
+controller.local_machine._local_speak = _local_only_speak
 
 # ---- Key Event Interception for Remote Control ----
 
@@ -100,49 +251,35 @@ try:
         if not controller.controlling_remote:
             return _original_process_key(event_self)
 
+        _dbg("_patched_process_key: in REMOTE mode")
         # Always allow the toggle gesture through locally:
         # Orca modifier (Insert or CapsLock) + Alt + Tab
-        event_string = event_self.event_string if hasattr(event_self, 'event_string') else ""
+        key_name = event_self.keyval_name if hasattr(event_self, 'keyval_name') else ""
         modifiers = event_self.modifiers if hasattr(event_self, 'modifiers') else 0
 
-        # Check for the toggle combo - let it pass through to Orca
-        is_alt = bool(modifiers & (1 << 3))  # Mod1Mask = Alt
-        is_tab = event_string == "Tab" or event_string == "ISO_Left_Tab"
+        # Always allow the toggle gesture (Orca+Alt+Tab) through to local Orca
+        is_orca = bool(modifiers & keybindings.ORCA_MODIFIER_MASK)
+        is_alt = bool(modifiers & keybindings.ALT_MODIFIER_MASK)
+        is_tab = key_name == "Tab" or key_name == "ISO_Left_Tab"
 
-        # Check if Orca modifier is active
-        orca_mod_active = False
-        try:
-            from orca import orca_modifier_manager
-            mgr = orca_modifier_manager.get_manager()
-            orca_mod_active = mgr.is_orca_modifier_active() if hasattr(mgr, 'is_orca_modifier_active') else False
-        except Exception:
-            pass
-
-        if orca_mod_active and is_alt and is_tab:
+        if is_orca and is_alt and is_tab:
             # Toggle gesture - process locally
             return _original_process_key(event_self)
 
-        # Forward all other keys to NVDA
-        if hasattr(event_self, 'is_pressed_key'):
-            pressed = event_self.is_pressed_key()
-        elif hasattr(event_self, 'pressed'):
-            pressed = event_self.pressed
-        else:
-            pressed = True
-
-        mod_names = []
-        if modifiers & (1 << 0):  # Shift
-            mod_names.append("shift")
-        if modifiers & (1 << 2):  # Control
-            mod_names.append("control")
-        if modifiers & (1 << 3):  # Alt
-            mod_names.append("alt")
-
-        controller.send_key(
-            key_name=event_string,
-            pressed=pressed,
-            modifiers=mod_names if mod_names else None
-        )
+        # Forward all other keys to NVDA in NVDA Remote VK-code format
+        pressed = event_self.is_pressed_key()
+        vk_info = _key_to_vk(key_name)
+        _dbg("REMOTE key: name=%r pressed=%s vk=%s connected=%s" % (
+            key_name, pressed, vk_info, controller.transport.connected))
+        if vk_info is not None:
+            vk_code, scan_code, extended = vk_info
+            controller.transport.send(
+                type="key",
+                vk_code=vk_code,
+                scan_code=scan_code,
+                extended=extended,
+                pressed=pressed,
+            )
         # Consume the event - don't process locally
         return True
 
@@ -154,10 +291,26 @@ except Exception:
 
 # ---- Gesture Handlers ----
 
+def _update_keyboard_grab():
+    """Grab the full keyboard in remote mode so keystrokes don't also fire locally."""
+    try:
+        from orca import input_event_manager
+        iem = input_event_manager.get_manager()
+        if controller.controlling_remote:
+            iem.grab_keyboard("orca_remote")
+        else:
+            iem.ungrab_keyboard("orca_remote")
+        _dbg("keyboard grab updated: remote=%s" % controller.controlling_remote)
+    except Exception:
+        _dbg("grab_keyboard failed: %s" % traceback.format_exc())
+
 def _toggle_remote_control(script=None, inputEvent=None):
     """Toggle between controlling local Orca and remote NVDA.
     Gesture: Orca+Alt+Tab (mirrors NVDA Remote's F11)"""
     controller.toggle_control()
+    _dbg("toggle_remote_control: now controlling_remote=%s transport.connected=%s" % (
+        controller.controlling_remote, controller.transport.connected))
+    _update_keyboard_grab()
     return True
 
 def _show_connect_dialog(script=None, inputEvent=None):
@@ -195,6 +348,7 @@ def _disconnect(script=None, inputEvent=None):
     """Disconnect from the remote session.
     Gesture: Orca+Alt+PageDown (mirrors NVDA Remote's Alt+NVDA+PageDown)"""
     controller.disconnect()
+    _update_keyboard_grab()
     return True
 
 def _push_clipboard(script=None, inputEvent=None):
@@ -232,93 +386,59 @@ def _register_gestures():
       Orca+Shift+Delete  = Send Ctrl+Alt+Del to remote
     """
     try:
-        # Get modifier mask constants, with fallbacks for different Orca versions
+        from orca import command_manager as cmd_mgr, orca_modifier_manager
+
         orca_mod = getattr(keybindings, 'ORCA_MODIFIER_MASK', 1 << 14)
         alt_mod = getattr(keybindings, 'ALT_MODIFIER_MASK', 1 << 3)
         shift_mod = getattr(keybindings, 'SHIFT_MODIFIER_MASK', 1 << 0)
         ctrl_mod = getattr(keybindings, 'CTRL_MODIFIER_MASK', 1 << 2)
-        default_mask = getattr(keybindings, 'DEFAULT_MODIFIER_MASK',
-                              getattr(keybindings, 'defaultModifierMask', 0xFFFF))
 
         orca_alt = getattr(keybindings, 'ORCA_ALT_MODIFIER_MASK', orca_mod | alt_mod)
         orca_shift = getattr(keybindings, 'ORCA_SHIFT_MODIFIER_MASK', orca_mod | shift_mod)
-        ctrl_shift_orca = getattr(keybindings, 'CTRL_SHIFT_ORCA_MODIFIER_MASK',
-                                  ctrl_mod | shift_mod | orca_mod)
+        ctrl_shift_orca = ctrl_mod | shift_mod | orca_mod
 
-        print("Orca Remote: Modifier masks: orca=%s alt=%s shift=%s ctrl=%s default_mask=%s"
-              % (hex(orca_mod), hex(alt_mod), hex(shift_mod), hex(ctrl_mod), hex(default_mask)))
+        print("Orca Remote: Modifier masks: orca=%s alt=%s shift=%s ctrl=%s"
+              % (hex(orca_mod), hex(alt_mod), hex(shift_mod), hex(ctrl_mod)))
         print("Orca Remote: Combined masks: orca_alt=%s orca_shift=%s ctrl_shift_orca=%s"
               % (hex(orca_alt), hex(orca_shift), hex(ctrl_shift_orca)))
 
-        # Check which constants came from Orca vs our fallbacks
-        for name in ('ORCA_MODIFIER_MASK', 'ALT_MODIFIER_MASK', 'SHIFT_MODIFIER_MASK',
-                     'CTRL_MODIFIER_MASK', 'defaultModifierMask',
-                     'ORCA_ALT_MODIFIER_MASK', 'ORCA_SHIFT_MODIFIER_MASK'):
-            if hasattr(keybindings, name):
-                print("Orca Remote:   keybindings.%s = %s (from Orca)" % (name, hex(getattr(keybindings, name))))
-            else:
-                print("Orca Remote:   keybindings.%s = NOT FOUND (using fallback)" % name)
-
-        gesture_bindings = [
-            # (key, modifier_mask, required_modifiers, handler, description)
-            ("Tab",       default_mask, orca_alt,       _toggle_remote_control,
+        # (name, key, modifiers, handler, description)
+        all_bindings = [
+            ("orca_remote_toggle",         "Tab",          orca_alt,        _toggle_remote_control,
              "Toggle local/remote control"),
-            ("Page_Up",   default_mask, orca_alt,       _show_connect_dialog,
+            ("orca_remote_connect",        "Page_Up",      orca_alt,        _show_connect_dialog,
              "Connect to remote (PageUp)"),
-            ("KP_Page_Up", default_mask, orca_alt,      _show_connect_dialog,
+            ("orca_remote_connect_kp",     "KP_Page_Up",   orca_alt,        _show_connect_dialog,
              "Connect to remote (Keypad PageUp)"),
-            ("Page_Down", default_mask, orca_alt,       _disconnect,
+            ("orca_remote_disconnect",     "Page_Down",    orca_alt,        _disconnect,
              "Disconnect from remote (PageDown)"),
-            ("KP_Page_Down", default_mask, orca_alt,    _disconnect,
+            ("orca_remote_disconnect_kp",  "KP_Page_Down", orca_alt,        _disconnect,
              "Disconnect from remote (Keypad PageDown)"),
-            ("c",         default_mask, ctrl_shift_orca, _push_clipboard,
+            ("orca_remote_clipboard",      "c",            ctrl_shift_orca, _push_clipboard,
              "Push clipboard to remote"),
-            ("m",         default_mask, orca_alt,       _toggle_mute,
+            ("orca_remote_mute",           "m",            orca_alt,        _toggle_mute,
              "Toggle mute remote"),
-            ("Delete",    default_mask, orca_shift,     _send_ctrl_alt_del,
+            ("orca_remote_ctrl_alt_del",   "Delete",       orca_shift,      _send_ctrl_alt_del,
              "Send Ctrl+Alt+Del to remote"),
-        ]
-
-        # Alternative bindings for keyboards without PageUp/PageDown (e.g. Mac)
-        alt_bindings = [
-            ("c",         default_mask, orca_alt,       _show_connect_dialog,
+            # Alternative bindings for keyboards without PageUp/PageDown (e.g. Mac laptops)
+            ("orca_remote_connect_alt",    "c",            orca_alt,        _show_connect_dialog,
              "Connect to remote (Alt: Orca+Alt+C)"),
-            ("d",         default_mask, orca_alt,       _disconnect,
+            ("orca_remote_disconnect_alt", "d",            orca_alt,        _disconnect,
              "Disconnect from remote (Alt: Orca+Alt+D)"),
         ]
 
-        # Get the default script to register bindings
-        default_script = None
-        try:
-            script_manager = orca.orca.getScriptManager()
-            default_script = script_manager.getDefaultScript()
-            print("Orca Remote: Got default script via getScriptManager(): %s" % type(default_script).__name__)
-        except AttributeError:
-            sm = getattr(orca.orca, '_scriptManager', None)
-            if sm and hasattr(sm, 'getDefaultScript'):
-                default_script = sm.getDefaultScript()
-                print("Orca Remote: Got default script via _scriptManager: %s" % type(default_script).__name__)
+        mgr = cmd_mgr.get_manager()
+        orca_modifiers = orca_modifier_manager.get_manager().get_orca_modifier_keys()
 
-        if not default_script or not hasattr(default_script, 'keyBindings'):
-            print("Orca Remote: Could not get default script for keybinding registration")
-            print("Orca Remote:   default_script = %s" % default_script)
-            if default_script:
-                print("Orca Remote:   attrs = %s" % dir(default_script))
-            return
-
-        all_bindings = gesture_bindings + alt_bindings
-        for key, mask, mods, handler, desc in all_bindings:
+        for name, key, mods, handler, desc in all_bindings:
             try:
-                binding = keybindings.KeyBinding(key, mask, mods, handler, 1)
-                default_script.keyBindings.add(binding)
-                print("Orca Remote:   Registered: %s (key=%s mask=%s mods=%s)"
-                      % (desc, key, hex(mask), hex(mods)))
+                cmd = mgr.register_command(name, handler, desc, key, mods)
+                kb = cmd.get_keybinding()
+                if kb and not kb.has_grabs():
+                    kb.add_grabs(orca_modifiers)
+                print("Orca Remote:   Registered: %s (key=%s mods=%s)" % (desc, key, hex(mods)))
             except Exception as e:
                 print("Orca Remote:   FAILED to register %s: %s" % (desc, e))
-
-        if hasattr(default_script.keyBindings, 'setup'):
-            default_script.keyBindings.setup()
-            print("Orca Remote: Called keyBindings.setup()")
 
         print("Orca Remote: All gestures registered successfully")
 
