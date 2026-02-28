@@ -139,7 +139,8 @@ Uses GTK clipboard (`Gtk.Clipboard`) as primary, with `xclip` as fallback.
 
 - `install` — Takes 3 args (host, port, key), does string replacement in `orca-customizations.py` to inject config, copies everything to `~/.local/share/orca/`
 - `uninstall` — Removes installed files, restores backup of original `orca-customizations.py`
-- The install script replaces the literal strings `"host"`, `6837`, and `"key"` in the source — these are sentinel values that must remain exactly as-is in the repo version
+- **Install without args**: `./install` works with no arguments. The plugin loads but does not auto-connect — user connects via the dialog (Orca+Alt+PageUp). If args are passed (`./install host port key`), the sentinels are replaced and auto-connect is enabled.
+- The sentinel values `"host"`, `6837`, and `"key"` in orca-customizations.py must remain exactly as-is in the repo. The `_has_config` check at startup compares against these to decide whether to auto-connect.
 
 ## Common Tasks for Agents
 

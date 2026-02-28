@@ -8,23 +8,22 @@ import sys
 def replace_string(text, default, new):
     return text.replace('"%s"' % default, '"%s"' % new)
 
-def make_orca_customizations(nvda_remote_host, nvda_remote_port, nvda_remote_key, destfile):
+def make_orca_customizations(destfile, nvda_remote_host=None, nvda_remote_port=None, nvda_remote_key=None):
     with open("orca-customizations.py", "r") as f:
         customizations = f.read()
-        customizations = replace_string(customizations, "host", nvda_remote_host)
-        customizations = customizations.replace("6837", nvda_remote_port)
-        customizations = replace_string(customizations, "key", nvda_remote_key)
+        if nvda_remote_host:
+            customizations = replace_string(customizations, "host", nvda_remote_host)
+        if nvda_remote_port:
+            customizations = customizations.replace("6837", nvda_remote_port)
+        if nvda_remote_key:
+            customizations = replace_string(customizations, "key", nvda_remote_key)
         with open(destfile, "w") as f2:
             f2.write(customizations)
 
 def main():
-    if len(sys.argv) < 4:
-        print("Usage: %s NVDA_REMOTE_ADDRESS NVDA_REMOTE_PORT NVDA_REMOTE_KEY" % sys.argv[0])
-        return 1
-
     orca_folder = os.path.expanduser("~/.local/share/orca")
     orca_scripts_folder = os.path.join(orca_folder, "orca-scripts")
-    input("Installing Orca Remote to %s. Press Enter to continue or Control C to abort:" % orca_folder)
+    input("Installing Orca Remote to %s. Press Enter to continue or Ctrl+C to abort:" % orca_folder)
 
     customizations_path = os.path.join(orca_folder, "orca-customizations.py")
     if os.path.exists(customizations_path):
@@ -32,7 +31,10 @@ def main():
         shutil.copy(customizations_path, "%s/orca-customizations-backup.py" % orca_folder)
 
     print("Creating customizations...")
-    make_orca_customizations(sys.argv[1], sys.argv[2], sys.argv[3], customizations_path)
+    if len(sys.argv) >= 4:
+        make_orca_customizations(customizations_path, sys.argv[1], sys.argv[2], sys.argv[3])
+    else:
+        make_orca_customizations(customizations_path)
 
     print("Copying Orca Remote libraries...")
     os.makedirs(orca_scripts_folder, exist_ok=True)
@@ -41,6 +43,12 @@ def main():
 
     print("")
     print("Installation complete. Restart Orca with: orca --replace")
+    print("")
+    if len(sys.argv) >= 4:
+        print("Auto-connect is configured. Orca will connect on startup.")
+    else:
+        print("No server configured. Use the connect dialog after Orca starts:")
+        print("  Orca+Alt+PageUp  to open the connect dialog")
     print("")
     print("Gestures (Orca key = Insert or CapsLock):")
     print("  Orca+Alt+Tab        = Toggle local/remote control")

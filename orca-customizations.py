@@ -43,17 +43,24 @@ def _speak_message(text):
 controller = RemoteController(transport, speech_callback=_speak_message)
 
 # ---- Connection Thread ----
+# Only auto-connect if real connection details were provided (not the
+# install-time sentinel values). Otherwise the user connects via the
+# connect dialog (Orca+Alt+PageUp).
 
-def try_run_thread():
-    try:
-        transport.run()
-    except Exception:
-        print("Error in thread")
-        traceback.print_exc()
+_has_config = (YOUR_NVDAREMOTE_SERVER_ADDRESS != "host"
+               and YOUR_NVDAREMOTE_KEY != "key")
 
-t = threading.Thread(target=try_run_thread)
-t.daemon = True
-t.start()
+if _has_config:
+    def try_run_thread():
+        try:
+            transport.run()
+        except Exception:
+            print("Error in thread")
+            traceback.print_exc()
+
+    t = threading.Thread(target=try_run_thread)
+    t.daemon = True
+    t.start()
 
 # ---- Patch Orca Speech Functions (Slave: forward local speech to remote) ----
 

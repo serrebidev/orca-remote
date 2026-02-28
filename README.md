@@ -18,34 +18,44 @@ It implements all NVDA Remote protocol v2 message types.
 - **Session management**: Client join/leave notifications, MOTD, error handling
 - **Orca key gestures**: Uses the Orca modifier key (Insert or CapsLock)
 
-## Supported NVDA Remote Protocol Messages
+## Installation
 
-| Message Type | Direction | Status |
-|---|---|---|
-| `protocol_version` | Outbound | Supported |
-| `join` | Outbound | Supported |
-| `channel_joined` | Inbound | Supported |
-| `client_joined` | Inbound | Supported |
-| `client_left` | Inbound | Supported |
-| `generate_key` | Outbound | Supported |
-| `key` | Both | Supported |
-| `speak` | Both | Supported |
-| `cancel` | Both | Supported |
-| `pause_speech` | Inbound | Supported |
-| `tone` | Inbound | Supported |
-| `wave` | Inbound | Supported |
-| `send_SAS` | Both | Supported |
-| `index` | Inbound | Logged |
-| `display` | Inbound | Supported |
-| `braille_input` | Inbound | Logged |
-| `set_braille_info` | Both | Supported |
-| `set_display_size` | Inbound | Logged |
-| `set_clipboard_text` | Both | Supported |
-| `motd` | Inbound | Logged |
-| `version_mismatch` | Inbound | Supported |
-| `ping` | Inbound | Supported |
-| `error` | Inbound | Supported |
-| `nvda_not_connected` | Inbound | Supported |
+1. Install optional dependencies:
+   ```
+   sudo apt install xdotool sox xclip
+   ```
+
+2. Run the install script:
+   ```
+   ./install
+   ```
+
+3. Restart Orca:
+   ```
+   orca --replace
+   ```
+
+That's it. Use the connect dialog to connect when you're ready.
+
+If you want Orca to auto-connect on startup, you can pass the server details
+to the install script instead:
+```
+./install <SERVER_ADDRESS> <PORT> <CHANNEL_KEY>
+```
+
+## Quick Start
+
+1. On the **NVDA** machine (Windows): open NVDA Remote, choose
+   "Control another machine" or "Allow this machine to be controlled",
+   and note the server address, port, and key.
+
+2. On the **Orca** machine (Linux): press **Orca + Alt + Page Up** to
+   open the connect dialog. Enter the same server, port, and key.
+   Choose the matching connection mode and press Connect.
+
+3. To control NVDA from Orca, press **Orca + Alt + Tab** to toggle
+   remote control mode. All keystrokes are forwarded to NVDA.
+   Press the same shortcut again to return to local control.
 
 ## Gestures
 
@@ -64,44 +74,7 @@ your Orca layout setting).
 When controlling the remote machine, all keystrokes are forwarded to NVDA
 except the toggle gesture (Orca + Alt + Tab), which always stays local.
 
-## Dependencies
-
-- Python 3
-- GTK 3 (for the connect dialog)
-- `xdotool` (for receiving remote key events from NVDA):
-  ```
-  sudo apt install xdotool
-  ```
-- `sox` (optional, for tone playback):
-  ```
-  sudo apt install sox
-  ```
-- `xclip` (optional fallback for clipboard, GTK clipboard is preferred):
-  ```
-  sudo apt install xclip
-  ```
-
-## Installation
-
-1. Set up an NVDA Remote server on your network, or use a public relay server.
-   On the NVDA side, use the "Control another machine" option.
-
-2. Run the install script with your NVDA Remote server details:
-   ```
-   ./install <SERVER_ADDRESS> <PORT> <CHANNEL_KEY>
-   ```
-
-3. Restart Orca:
-   ```
-   orca --replace
-   ```
-
 ## Usage
-
-### Automatic connection
-
-If you provided connection details during installation, Orca Remote will
-automatically connect to the NVDA Remote server when Orca starts.
 
 ### Connect dialog
 
@@ -132,6 +105,47 @@ When the remote machine pushes clipboard, it is automatically received.
 ### Muting remote output
 
 Press **Orca + Alt + M** to mute/unmute remote speech and sounds.
+
+### Disconnecting
+
+Press **Orca + Alt + Page Down** to disconnect from the remote session.
+
+## Dependencies
+
+- Python 3
+- GTK 3 (for the connect dialog)
+- `xdotool` — required for receiving remote key events from NVDA
+- `sox` — optional, for tone playback
+- `xclip` — optional, clipboard fallback (GTK clipboard is preferred)
+
+## Supported NVDA Remote Protocol Messages
+
+| Message Type | Direction | Status |
+|---|---|---|
+| `protocol_version` | Outbound | Supported |
+| `join` | Outbound | Supported |
+| `channel_joined` | Inbound | Supported |
+| `client_joined` | Inbound | Supported |
+| `client_left` | Inbound | Supported |
+| `generate_key` | Outbound | Supported |
+| `key` | Both | Supported |
+| `speak` | Both | Supported |
+| `cancel` | Both | Supported |
+| `pause_speech` | Inbound | Supported |
+| `tone` | Inbound | Supported |
+| `wave` | Inbound | Supported |
+| `send_SAS` | Both | Supported |
+| `index` | Inbound | Logged |
+| `display` | Inbound | Supported |
+| `braille_input` | Inbound | Logged |
+| `set_braille_info` | Both | Supported |
+| `set_display_size` | Inbound | Logged |
+| `set_clipboard_text` | Both | Supported |
+| `motd` | Inbound | Logged |
+| `version_mismatch` | Inbound | Supported |
+| `ping` | Inbound | Supported |
+| `error` | Inbound | Supported |
+| `nvda_not_connected` | Inbound | Supported |
 
 ## Audio Cues
 
