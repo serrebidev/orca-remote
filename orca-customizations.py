@@ -235,7 +235,8 @@ def _register_gestures():
         alt_mod = getattr(keybindings, 'ALT_MODIFIER_MASK', 1 << 3)
         shift_mod = getattr(keybindings, 'SHIFT_MODIFIER_MASK', 1 << 0)
         ctrl_mod = getattr(keybindings, 'CTRL_MODIFIER_MASK', 1 << 2)
-        default_mask = getattr(keybindings, 'defaultModifierMask', 0xFF)
+        default_mask = getattr(keybindings, 'DEFAULT_MODIFIER_MASK',
+                              getattr(keybindings, 'defaultModifierMask', 0xFFFF))
 
         orca_alt = getattr(keybindings, 'ORCA_ALT_MODIFIER_MASK', orca_mod | alt_mod)
         orca_shift = getattr(keybindings, 'ORCA_SHIFT_MODIFIER_MASK', orca_mod | shift_mod)
