@@ -23,19 +23,37 @@ def main():
         return 1
 
     orca_folder = os.path.expanduser("~/.local/share/orca")
+    orca_scripts_folder = os.path.join(orca_folder, "orca-scripts")
     input("Installing Orca Remote to %s. Press Enter to continue or Control C to abort:" % orca_folder)
 
-    print("Backing up your orca-customizations...")
-    shutil.copy("%s/orca-customizations.py" % orca_folder, "%s/orca-customizations-backup.py" % orca_folder)
+    customizations_path = os.path.join(orca_folder, "orca-customizations.py")
+    if os.path.exists(customizations_path):
+        print("Backing up your orca-customizations...")
+        shutil.copy(customizations_path, "%s/orca-customizations-backup.py" % orca_folder)
 
     print("Creating customizations...")
-    make_orca_customizations(sys.argv[1], sys.argv[2], sys.argv[3], "%s/orca-customizations.py" % orca_folder)
+    make_orca_customizations(sys.argv[1], sys.argv[2], sys.argv[3], customizations_path)
 
-    print("Copying NVDA Remote libraries...")
+    print("Copying Orca Remote libraries...")
+    os.makedirs(orca_scripts_folder, exist_ok=True)
     for file in glob("orca-scripts/*.py"):
-        shutil.copy(file, "%s/%s" % (orca_folder, file))
+        shutil.copy(file, os.path.join(orca_folder, file))
 
-    print("Instalation complete. You can now replace Orca.")
+    print("")
+    print("Installation complete. Restart Orca with: orca --replace")
+    print("")
+    print("Gestures (Orca key = Insert or CapsLock):")
+    print("  Orca+Alt+Tab        = Toggle local/remote control")
+    print("  Orca+Alt+PageUp     = Connect dialog")
+    print("  Orca+Alt+PageDown   = Disconnect")
+    print("  Ctrl+Shift+Orca+C   = Push clipboard to remote")
+    print("  Orca+Alt+M          = Mute/unmute remote")
+    print("  Orca+Shift+Delete   = Send Ctrl+Alt+Del to remote")
+    print("")
+    print("Optional dependencies:")
+    print("  sudo apt install xdotool   # Required for remote key injection")
+    print("  sudo apt install sox       # For tone playback")
+    print("  sudo apt install xclip     # Clipboard fallback")
     return 0
 
 if __name__ == "__main__":

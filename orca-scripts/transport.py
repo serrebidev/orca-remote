@@ -161,6 +161,16 @@ class RelayTransport(TCPTransport):
 		else:
 			self.send('generate_key')
 
+	def reconnect(self, address, channel, connection_type=None):
+		"""Reconnect to a new server with new parameters."""
+		self.close()
+		self.address = address
+		self.channel = channel
+		if connection_type:
+			self.connection_type = connection_type
+		self.reconnector_thread = ConnectorThread(self)
+		self.reconnector_thread.start()
+
 class ConnectorThread(threading.Thread):
 
 	def __init__(self, connector, connect_delay=5):
