@@ -169,7 +169,8 @@ class RemoteController:
     def _on_transport_connected(self):
         log.info("Transport connected")
         self._play_cue("connected")
-        if self.speech_callback:
+        # Only announce "Connected" the first time, not on every auto-reconnect.
+        if self.transport.successful_connects == 1 and self.speech_callback:
             self.speech_callback("Connected")
 
     def _on_transport_disconnected(self):

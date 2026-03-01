@@ -180,20 +180,31 @@ old_stop = SpeechServer.stop
 def my_speak(self, text, acss, **kw):
     # Only forward Orca's own speech when acting as slave (being controlled).
     # In master mode we receive NVDA's speech; forwarding it back causes a loop.
+    global _want_cancel
     if text and transport.connected and transport.connection_type == "slave":
+        if _want_cancel:
+            transport.send(type="cancel")
+            _want_cancel = False
         transport.send(type="speak", sequence=text)
     return old_speak(self, text, acss, **kw)
 
 def my_speak_character(self, character, acss=None):
+    global _want_cancel
     if transport.connected and transport.connection_type == "slave":
+        if _want_cancel:
+            transport.send(type="cancel")
+            _want_cancel = False
         transport.send(type="speak", sequence=[character])
     return old_speakCharacter(self, character, acss)
 
 def my_stop(self):
-    # Only forward cancel when acting as slave; in master mode this echoes
-    # our cancel back to NVDA and cuts off its speech.
+    # Defer the cancel: record the intent but don't send it to NVDA yet.
+    # my_speak/my_speak_character will flush it just before the next utterance.
+    # This prevents NVDA going silent when a GTK4 (or other poorly-accessible)
+    # app gains focus and Orca calls stop() without any following speak().
+    global _want_cancel
     if transport.connected and transport.connection_type == "slave":
-        transport.send(type="cancel")
+        _want_cancel = True
     return old_stop(self)
 
 SpeechServer._speak = my_speak
@@ -243,6 +254,14 @@ controller.local_machine._local_speak = _local_only_speak
 # "pressed" to the remote.  Cleared on return to LOCAL so we can send
 # synthetic key-up events and un-stick them on the remote machine.
 _forwarded_keys_down = set()
+
+# Deferred cancel flag: set by my_stop, consumed by the next my_speak call.
+# We do NOT send cancel to NVDA immediately because GTK4 apps (and others
+# with poor AT-SPI trees) cause Orca to call stop() but never speak() for
+# the new window, leaving NVDA in complete silence.  By deferring, cancel is
+# only forwarded when speech actually follows, so NVDA finishes its current
+# utterance naturally instead of being abruptly cut off.
+_want_cancel = False
 
 def _release_all_forwarded_keys():
     """Send key-up for every key still marked as down on the remote."""
