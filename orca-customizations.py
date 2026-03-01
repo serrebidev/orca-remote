@@ -266,6 +266,17 @@ try:
         processing them locally -- except for the toggle gesture
         (Orca key + Alt + Tab) which always stays local.
         """
+        # Pass through events that local_machine.send_key injected via AT-SPI.
+        # Orca's own AT-SPI listener sees these events too; without this check
+        # it would consume them and apps would never receive the keystroke.
+        try:
+            from local_machine import is_injected_event
+            if is_injected_event(event_self.id, event_self.is_pressed_key()):
+                _dbg("passthrough injected keysym=%d" % event_self.id)
+                return False
+        except Exception:
+            pass
+
         if not controller.controlling_remote:
             return _original_process_key(event_self)
 
@@ -339,6 +350,32 @@ def _toggle_remote_control(script=None, inputEvent=None):
     _update_keyboard_grab()
     return True
 
+_local_server = None
+
+
+def _start_local_server(port):
+    """Start the built-in relay server on *port*, stopping any existing one."""
+    global _local_server
+    try:
+        from local_server import LocalRelayServer
+        if _local_server is not None:
+            _local_server.stop()
+        _local_server = LocalRelayServer(port=port)
+        _local_server.start()
+        _dbg("Local relay server started on port %d" % port)
+    except Exception:
+        traceback.print_exc()
+        _speak_message("Could not start local server")
+
+
+def _stop_local_server():
+    """Stop the built-in relay server if running."""
+    global _local_server
+    if _local_server is not None:
+        _local_server.stop()
+        _local_server = None
+
+
 def _show_connect_dialog(script=None, inputEvent=None):
     """Show the connect dialog to connect to a remote NVDA machine.
     Gesture: Orca+Alt+PageUp (mirrors NVDA Remote's Alt+NVDA+PageUp)"""
@@ -346,10 +383,23 @@ def _show_connect_dialog(script=None, inputEvent=None):
         if result is None:
             _speak_message("Connection cancelled")
             return
-        host = result["host"]
+        conn_type = result["connection_type"]
+        server_mode = result["server_mode"]
         port = result["port"]
         key = result["key"]
-        conn_type = result["connection_type"]
+
+        if server_mode == "local":
+            if conn_type == "slave":
+                # Start a built-in relay server, then join it as slave
+                _start_local_server(port)
+                host = "localhost"
+            else:
+                # Master connecting to a local server already running here
+                host = "localhost"
+        else:
+            host = result["host"]
+            _stop_local_server()
+
         _speak_message("Connecting to %s" % host)
         transport.reconnect(
             address=(host, port),
@@ -376,6 +426,7 @@ def _disconnect(script=None, inputEvent=None):
     _release_all_forwarded_keys()
     controller.disconnect()
     _update_keyboard_grab()
+    _stop_local_server()
     return True
 
 def _push_clipboard(script=None, inputEvent=None):

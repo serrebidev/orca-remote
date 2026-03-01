@@ -4,11 +4,22 @@ Manages the state of local vs remote control, handles all NVDA Remote
 protocol message types, session events, and audio notification cues.
 """
 
+import os
 import threading
+import time
 from logging import getLogger
 log = getLogger('remote_controller')
 
 from local_machine import LocalMachine
+
+_DBG_LOG = os.path.expanduser("~/.local/share/orca/orca-remote-debug.log")
+
+def _dbg(msg):
+    try:
+        with open(_DBG_LOG, "a") as f:
+            f.write("[%.3f] RC: %s\n" % (time.time(), msg))
+    except Exception:
+        pass
 
 # Audio cue definitions: list of (frequency_hz, duration_ms) tuples
 CUES = {
@@ -158,6 +169,8 @@ class RemoteController:
     def _on_transport_connected(self):
         log.info("Transport connected")
         self._play_cue("connected")
+        if self.speech_callback:
+            self.speech_callback("Connected")
 
     def _on_transport_disconnected(self):
         log.info("Transport disconnected")
@@ -190,6 +203,11 @@ class RemoteController:
                 }
                 log.info("Client joined: %s (%s)" % (client_id, conn_type))
                 self._play_cue("client_connected")
+                if self.speech_callback:
+                    if conn_type == "master":
+                        self.speech_callback("Controller connected")
+                    else:
+                        self.speech_callback("Client connected")
 
     def _on_client_left(self, client=None, **kwargs):
         if client:
@@ -250,12 +268,16 @@ class RemoteController:
 
     # ---- Incoming Input ----
 
-    def _on_remote_key(self, key_name=None, pressed=None, modifiers=None, **kwargs):
-        if key_name is None or pressed is None:
+    def _on_remote_key(self, key_name=None, pressed=None, modifiers=None,
+                       vk_code=None, scan_code=None, extended=None, **kwargs):
+        if pressed is None:
+            _dbg("_on_remote_key: pressed is None, dropping (kwargs=%s)" % kwargs)
             return
-        log.info("Remote key: %s pressed=%s" % (key_name, pressed))
+        _dbg("_on_remote_key: name=%r vk=%s ext=%s pressed=%s" % (
+            key_name, vk_code, extended, pressed))
         self.local_machine.send_key(
-            key_name=key_name, pressed=pressed, modifiers=modifiers
+            key_name=key_name, pressed=pressed, modifiers=modifiers,
+            vk_code=vk_code, scan_code=scan_code, extended=extended,
         )
 
     def _on_remote_sas(self, **kwargs):
