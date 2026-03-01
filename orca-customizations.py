@@ -54,6 +54,7 @@ _X11_TO_VK.update({
     'Return':         (0x0D, 0x1C, False),
     'BackSpace':      (0x08, 0x0E, False),
     'Tab':            (0x09, 0x0F, False),
+    'ISO_Left_Tab':   (0x09, 0x0F, False),   # Shift+Tab reports this keyval
     'Escape':         (0x1B, 0x01, False),
     'space':          (0x20, 0x39, False),
     'Delete':         (0x2E, 0x53, True),
@@ -238,6 +239,23 @@ controller.local_machine._local_speak = _local_only_speak
 
 # ---- Key Event Interception for Remote Control ----
 
+# Tracks (vk_code, scan_code, extended) for keys currently forwarded as
+# "pressed" to the remote.  Cleared on return to LOCAL so we can send
+# synthetic key-up events and un-stick them on the remote machine.
+_forwarded_keys_down = set()
+
+def _release_all_forwarded_keys():
+    """Send key-up for every key still marked as down on the remote."""
+    for vk_code, scan_code, extended in list(_forwarded_keys_down):
+        controller.transport.send(
+            type="key",
+            vk_code=vk_code,
+            scan_code=scan_code,
+            extended=extended,
+            pressed=False,
+        )
+    _forwarded_keys_down.clear()
+
 try:
     _original_process_key = input_event.KeyboardEvent.process
 
@@ -263,7 +281,11 @@ try:
         is_tab = key_name == "Tab" or key_name == "ISO_Left_Tab"
 
         if is_orca and is_alt and is_tab:
-            # Toggle gesture - process locally
+            # On the key-press event, release any keys still held down on
+            # the remote (Insert, Alt, etc.) before we switch to LOCAL mode.
+            # On key-release we just let it through without further action.
+            if event_self.is_pressed_key():
+                _release_all_forwarded_keys()
             return _original_process_key(event_self)
 
         # Forward all other keys to NVDA in NVDA Remote VK-code format
@@ -280,6 +302,10 @@ try:
                 extended=extended,
                 pressed=pressed,
             )
+            if pressed:
+                _forwarded_keys_down.add((vk_code, scan_code, extended))
+            else:
+                _forwarded_keys_down.discard((vk_code, scan_code, extended))
         # Consume the event - don't process locally
         return True
 
@@ -347,6 +373,7 @@ def _show_connect_dialog(script=None, inputEvent=None):
 def _disconnect(script=None, inputEvent=None):
     """Disconnect from the remote session.
     Gesture: Orca+Alt+PageDown (mirrors NVDA Remote's Alt+NVDA+PageDown)"""
+    _release_all_forwarded_keys()
     controller.disconnect()
     _update_keyboard_grab()
     return True
