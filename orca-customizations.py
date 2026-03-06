@@ -254,6 +254,7 @@ controller.local_machine._local_speak = _local_only_speak
 # "pressed" to the remote.  Cleared on return to LOCAL so we can send
 # synthetic key-up events and un-stick them on the remote machine.
 _forwarded_keys_down = set()
+_direct_shortcut_keys_down = set()
 
 # Deferred cancel flag: set by my_stop, consumed by the next my_speak call.
 # We do NOT send cancel to NVDA immediately because GTK4 apps (and others
@@ -262,6 +263,151 @@ _forwarded_keys_down = set()
 # only forwarded when speech actually follows, so NVDA finishes its current
 # utterance naturally instead of being abruptly cut off.
 _want_cancel = False
+
+_SHORTCUT_KEY_ALIASES = {
+    "Page_Up": {"Page_Up", "Prior"},
+    "KP_Page_Up": {"KP_Page_Up", "KP_Prior"},
+    "Page_Down": {"Page_Down", "Next"},
+    "KP_Page_Down": {"KP_Page_Down", "KP_Next"},
+}
+
+
+def _get_effective_modifiers(event_self):
+    """Return event modifiers with the Orca modifier folded in when possible."""
+    modifiers = getattr(event_self, "modifiers", 0) or 0
+    try:
+        from orca import orca_modifier_manager
+        mgr = orca_modifier_manager.get_manager()
+        if hasattr(mgr, "is_orca_modifier_active") and mgr.is_orca_modifier_active():
+            modifiers |= keybindings.ORCA_MODIFIER_MASK
+    except Exception:
+        pass
+    return modifiers
+
+
+def _matches_shortcut(event_self, keys, required_modifiers):
+    """Return True if *event_self* matches one of *keys* with exact modifiers."""
+    key_name = getattr(event_self, "keyval_name", "") or ""
+    normalized = _SHORTCUT_KEY_ALIASES.get(key_name, {key_name})
+    effective_modifiers = _get_effective_modifiers(event_self)
+    relevant = getattr(keybindings, "NON_LOCKING_MODIFIER_MASK", 0)
+    if relevant:
+        effective_modifiers &= relevant
+    return bool(normalized & keys) and effective_modifiers == required_modifiers
+
+
+def _get_remote_shortcut_match(event_self):
+    """Return Orca Remote shortcut metadata for *event_self*, or None."""
+    orca_alt = getattr(keybindings, "ORCA_ALT_MODIFIER_MASK",
+                       keybindings.ORCA_MODIFIER_MASK | keybindings.ALT_MODIFIER_MASK)
+    orca_shift = getattr(keybindings, "ORCA_SHIFT_MODIFIER_MASK",
+                         keybindings.ORCA_MODIFIER_MASK | keybindings.SHIFT_MODIFIER_MASK)
+    ctrl_shift_orca = (keybindings.CTRL_MODIFIER_MASK
+                       | keybindings.SHIFT_MODIFIER_MASK
+                       | keybindings.ORCA_MODIFIER_MASK)
+
+    shortcut_map = [
+        (
+            "toggle",
+            {"Tab", "ISO_Left_Tab"},
+            orca_alt,
+            {"orca_remote_toggle"},
+            _toggle_remote_control,
+        ),
+        (
+            "connect",
+            {"Page_Up", "Prior", "KP_Page_Up", "KP_Prior", "c"},
+            orca_alt,
+            {"orca_remote_connect", "orca_remote_connect_kp", "orca_remote_connect_alt"},
+            _show_connect_dialog,
+        ),
+        (
+            "disconnect",
+            {"Page_Down", "Next", "KP_Page_Down", "KP_Next", "d"},
+            orca_alt,
+            {"orca_remote_disconnect", "orca_remote_disconnect_kp", "orca_remote_disconnect_alt"},
+            _disconnect,
+        ),
+        (
+            "clipboard",
+            {"c"},
+            ctrl_shift_orca,
+            {"orca_remote_clipboard"},
+            _push_clipboard,
+        ),
+        (
+            "mute",
+            {"m"},
+            orca_alt,
+            {"orca_remote_mute"},
+            _toggle_mute,
+        ),
+        (
+            "send_sas",
+            {"Delete"},
+            orca_shift,
+            {"orca_remote_ctrl_alt_del"},
+            _send_ctrl_alt_del,
+        ),
+    ]
+
+    for shortcut_id, keys, modifiers, command_names, handler in shortcut_map:
+        if _matches_shortcut(event_self, keys, modifiers):
+            return {
+                "id": shortcut_id,
+                "command_names": command_names,
+                "handler": handler,
+            }
+    return None
+
+
+def _get_event_key_id(event_self):
+    """Return a stable identifier for press/release suppression."""
+    return (getattr(event_self, "hw_code", 0), getattr(event_self, "id", 0))
+
+
+def _should_run_shortcut_directly(event_self):
+    """Return True when the normal Orca command path will not execute this shortcut."""
+    if not event_self.is_pressed_key():
+        return False
+
+    script = None
+    try:
+        script = event_self.get_script()
+    except Exception:
+        script = getattr(event_self, "_script", None)
+
+    try:
+        from orca import command_manager as cmd_mgr
+        command = cmd_mgr.get_manager().get_command_for_event(event_self)
+        if script is not None and command is not None:
+            return False
+    except Exception:
+        pass
+
+    return True
+
+
+def _run_direct_shortcut(event_self, shortcut, force=False):
+    """Execute an Orca Remote shortcut directly and suppress its release event."""
+    if not event_self.is_pressed_key():
+        return False
+
+    if shortcut["id"] == "toggle" and controller.controlling_remote:
+        _release_all_forwarded_keys()
+
+    script = None
+    try:
+        script = event_self.get_script()
+    except Exception:
+        script = getattr(event_self, "_script", None)
+
+    _direct_shortcut_keys_down.add(_get_event_key_id(event_self))
+    _dbg("handling Orca Remote shortcut directly: %s force=%s script=%r key=%r mods=%s"
+         % (shortcut["id"], force, script, getattr(event_self, "keyval_name", ""),
+            hex(_get_effective_modifiers(event_self))))
+    shortcut["handler"](None, event_self)
+    return True
 
 def _release_all_forwarded_keys():
     """Send key-up for every key still marked as down on the remote."""
@@ -282,8 +428,8 @@ try:
         """Intercept key events when controlling remote machine.
 
         When in remote control mode, forward keys to NVDA instead of
-        processing them locally -- except for the toggle gesture
-        (Orca key + Alt + Tab) which always stays local.
+        processing them locally -- except for Orca Remote's own
+        management shortcuts, which must always stay local.
         """
         # Pass through events that local_machine.send_key injected via AT-SPI.
         # Orca's own AT-SPI listener sees these events too; without this check
@@ -296,16 +442,31 @@ try:
         except Exception:
             pass
 
+        event_key_id = _get_event_key_id(event_self)
+        if not event_self.is_pressed_key() and event_key_id in _direct_shortcut_keys_down:
+            _direct_shortcut_keys_down.discard(event_key_id)
+            _dbg("consumed release for direct Orca Remote shortcut key=%r"
+                 % getattr(event_self, "keyval_name", ""))
+            return True
+
+        shortcut = _get_remote_shortcut_match(event_self)
+
+        if controller.controlling_remote and shortcut is not None:
+            return _run_direct_shortcut(event_self, shortcut, force=True)
+
+        if shortcut is not None and _should_run_shortcut_directly(event_self):
+            return _run_direct_shortcut(event_self, shortcut)
+
         if not controller.controlling_remote:
             return _original_process_key(event_self)
 
         _dbg("_patched_process_key: in REMOTE mode")
-        # Always allow the toggle gesture through locally:
-        # Orca modifier (Insert or CapsLock) + Alt + Tab
+        # By this point any local Orca Remote management shortcut has
+        # already been handled above. Everything else gets forwarded.
         key_name = event_self.keyval_name if hasattr(event_self, 'keyval_name') else ""
         modifiers = event_self.modifiers if hasattr(event_self, 'modifiers') else 0
 
-        # Always allow the toggle gesture (Orca+Alt+Tab) through to local Orca
+        # Keep the historical toggle fallback here as a last resort.
         is_orca = bool(modifiers & keybindings.ORCA_MODIFIER_MASK)
         is_alt = bool(modifiers & keybindings.ALT_MODIFIER_MASK)
         is_tab = key_name == "Tab" or key_name == "ISO_Left_Tab"
