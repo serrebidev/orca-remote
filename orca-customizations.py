@@ -644,8 +644,6 @@ def _register_gestures():
       Orca+Shift+Delete  = Send Ctrl+Alt+Del to remote
     """
     try:
-        from orca import command_manager as cmd_mgr, orca_modifier_manager
-
         orca_mod = getattr(keybindings, 'ORCA_MODIFIER_MASK', 1 << 14)
         alt_mod = getattr(keybindings, 'ALT_MODIFIER_MASK', 1 << 3)
         shift_mod = getattr(keybindings, 'SHIFT_MODIFIER_MASK', 1 << 0)
@@ -655,10 +653,25 @@ def _register_gestures():
         orca_shift = getattr(keybindings, 'ORCA_SHIFT_MODIFIER_MASK', orca_mod | shift_mod)
         ctrl_shift_orca = ctrl_mod | shift_mod | orca_mod
 
-        print("Orca Remote: Modifier masks: orca=%s alt=%s shift=%s ctrl=%s"
-              % (hex(orca_mod), hex(alt_mod), hex(shift_mod), hex(ctrl_mod)))
-        print("Orca Remote: Combined masks: orca_alt=%s orca_shift=%s ctrl_shift_orca=%s"
-              % (hex(orca_alt), hex(orca_shift), hex(ctrl_shift_orca)))
+        # command_manager was introduced in Orca 46. On older versions the key
+        # event patch (_patched_process_key) still intercepts all shortcuts, so
+        # they work correctly -- they just won't appear in Orca's keybindings
+        # dialog. We attempt registration when possible and degrade gracefully.
+        try:
+            from orca import command_manager as cmd_mgr
+        except ImportError:
+            cmd_mgr = None
+
+        if cmd_mgr is None:
+            print("Orca Remote: command_manager not available in this Orca version. "
+                  "All gestures are still active via key event patching.")
+            return
+
+        try:
+            from orca import orca_modifier_manager as omm
+            orca_modifiers = omm.get_manager().get_orca_modifier_keys()
+        except Exception:
+            orca_modifiers = None
 
         # (name, key, modifiers, handler, description)
         all_bindings = [
@@ -686,14 +699,14 @@ def _register_gestures():
         ]
 
         mgr = cmd_mgr.get_manager()
-        orca_modifiers = orca_modifier_manager.get_manager().get_orca_modifier_keys()
 
         for name, key, mods, handler, desc in all_bindings:
             try:
                 cmd = mgr.register_command(name, handler, desc, key, mods)
-                kb = cmd.get_keybinding()
-                if kb and not kb.has_grabs():
-                    kb.add_grabs(orca_modifiers)
+                if orca_modifiers is not None:
+                    kb = cmd.get_keybinding()
+                    if kb and not kb.has_grabs():
+                        kb.add_grabs(orca_modifiers)
                 print("Orca Remote:   Registered: %s (key=%s mods=%s)" % (desc, key, hex(mods)))
             except Exception as e:
                 print("Orca Remote:   FAILED to register %s: %s" % (desc, e))
@@ -703,7 +716,7 @@ def _register_gestures():
     except Exception:
         traceback.print_exc()
         print("Orca Remote: Could not register gestures. "
-              "You may need to configure them in Orca's key bindings dialog.")
+              "Gestures are still active via key event patching.")
 
 # Register gestures after a short delay to ensure Orca is fully initialized
 def _delayed_init():
