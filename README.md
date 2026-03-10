@@ -48,7 +48,7 @@ To auto-connect on startup:
 
 On the NVDA machine, open NVDA Remote and get the server address, port, and key.
 
-On the Orca machine, press **Orca + Alt + Page Up**. Enter the same details and connect.
+On the Orca machine, press **Orca + Alt + C, or Page Up**. Enter the same details and connect.
 
 To control NVDA from Orca, press **Orca + Alt + Tab**. Press it again to return to local control.
 
