@@ -1,173 +1,91 @@
 # Orca-Remote
 
-Orca-Remote is a plugin that enables bidirectional communication between the
-Orca (Linux) and NVDA (Windows) screen readers using the NVDA Remote protocol.
-It implements all NVDA Remote protocol v2 message types.
+Orca-Remote lets Orca on Linux and NVDA on Windows work together over the NVDA Remote protocol.
 
-## Features
+You can send speech, braille, clipboard, tones, and control input between both machines.
 
-- **Speech forwarding**: Orca speech is sent to NVDA for output (and vice versa)
-- **Bidirectional control**: Control NVDA from Orca, or Orca from NVDA
-- **Connect dialog**: Accessible GTK dialog to connect to any NVDA Remote server
-- **Clipboard sharing**: Push clipboard between machines
-- **Braille forwarding**: Forward braille display output between machines
-- **Audio cues**: Beep sequences for connection events (matches NVDA Remote)
-- **Tone/wave playback**: Remote tones and wave files played locally
-- **Mute remote**: Silence remote speech/audio without disconnecting
-- **Send Ctrl+Alt+Del**: Send Secure Attention Sequence to remote
-- **Session management**: Client join/leave notifications, MOTD, error handling
-- **Orca key gestures**: Uses the Orca modifier key (Insert or CapsLock)
+## What it does
 
-## Installation
+- Forward speech between Orca and NVDA
+- Control NVDA from Orca, or Orca from NVDA
+- Share clipboard text
+- Forward braille output
+- Play remote tones and connection sounds
+- Mute remote speech without disconnecting
+- Send Ctrl+Alt+Del to the remote machine
 
-1. Install optional dependencies:
-   ```
-   sudo apt install xdotool sox xclip
-   ```
+It supports all NVDA Remote protocol v2 message types.
 
-2. Run the install script:
-   ```
-   ./install
-   ```
+## Install
 
-3. Restart Orca:
-   ```
-   orca --replace
-   ```
+Optional packages:
 
-That's it. Use the connect dialog to connect when you're ready.
+```bash
+sudo apt install xdotool sox xclip
+````
 
-If you want Orca to auto-connect on startup, you can pass the server details
-to the install script instead:
+Install the plugin:
+
+```bash
+./install
 ```
+
+Restart Orca:
+
+```bash
+orca --replace
+```
+
+Done.
+
+To auto-connect on startup:
+
+```bash
 ./install <SERVER_ADDRESS> <PORT> <CHANNEL_KEY>
 ```
 
-## Quick Start
+## Quick start
 
-1. On the **NVDA** machine (Windows): open NVDA Remote, choose
-   "Control another machine" or "Allow this machine to be controlled",
-   and note the server address, port, and key.
+On the NVDA machine, open NVDA Remote and get the server address, port, and key.
 
-2. On the **Orca** machine (Linux): press **Orca + Alt + Page Up** to
-   open the connect dialog. Enter the same server, port, and key.
-   Choose the matching connection mode and press Connect.
+On the Orca machine, press **Orca + Alt + Page Up**. Enter the same details and connect.
 
-3. To control NVDA from Orca, press **Orca + Alt + Tab** to toggle
-   remote control mode. All keystrokes are forwarded to NVDA.
-   Press the same shortcut again to return to local control.
+To control NVDA from Orca, press **Orca + Alt + Tab**. Press it again to return to local control.
 
-## Gestures
+## Shortcuts
 
-All gestures use the Orca modifier key (Insert or CapsLock, depending on
-your Orca layout setting).
+* **Orca + Alt + Tab**: Toggle remote control
+* **Orca + Alt + Page Up**: Open connect dialog
+* **Orca + Alt + Page Down**: Disconnect
+* **Ctrl + Shift + Orca + C**: Send clipboard
+* **Orca + Alt + M**: Mute or unmute remote audio
+* **Orca + Shift + Delete**: Send Ctrl+Alt+Del
 
-| Gesture | Action | NVDA Remote Equivalent |
-|---|---|---|
-| Orca + Alt + Tab | Toggle local/remote control | F11 |
-| Orca + Alt + Page Up | Open connect dialog | Alt + NVDA + Page Up |
-| Orca + Alt + Page Down | Disconnect | Alt + NVDA + Page Down |
-| Ctrl + Shift + Orca + C | Push clipboard to remote | Ctrl + Shift + NVDA + C |
-| Orca + Alt + M | Toggle mute remote speech | (menu item in NVDA) |
-| Orca + Shift + Delete | Send Ctrl+Alt+Del to remote | (menu item in NVDA) |
+## Connection modes
 
-When controlling the remote machine, all keystrokes are forwarded to NVDA
-except the toggle gesture (Orca + Alt + Tab), which always stays local.
-
-## Usage
-
-### Connect dialog
-
-Press **Orca + Alt + Page Up** to open the connect dialog. Choose:
-- **Allow this machine to be controlled** (slave mode) - NVDA controls Orca
-- **Control the remote machine** (master mode) - Orca controls NVDA
-
-Enter server address, port, and channel key. Use "Generate key" for a random key.
-
-### Controlling NVDA from Orca
-
-1. Connect to the NVDA Remote server (master mode)
-2. Press **Orca + Alt + Tab** to switch to remote control mode
-3. All keystrokes are now forwarded to NVDA
-4. Press **Orca + Alt + Tab** again to return to local control
-
-### Controlling Orca from NVDA
-
-1. On the NVDA side, connect using "Control another machine"
-2. On the Orca side, connect using "Allow this machine to be controlled"
-3. NVDA can then send keystrokes to Orca (requires `xdotool`)
-
-### Clipboard sharing
-
-Press **Ctrl + Shift + Orca + C** to push your clipboard to the remote machine.
-When the remote machine pushes clipboard, it is automatically received.
-
-### Muting remote output
-
-Press **Orca + Alt + M** to mute/unmute remote speech and sounds.
-
-### Disconnecting
-
-Press **Orca + Alt + Page Down** to disconnect from the remote session.
+* **Control the remote machine**: Orca controls NVDA
+* **Allow this machine to be controlled**: NVDA controls Orca
 
 ## Dependencies
 
-- Python 3
-- GTK 3 (for the connect dialog)
-- `xdotool` — required for receiving remote key events from NVDA
-- `sox` — optional, for tone playback
-- `xclip` — optional, clipboard fallback (GTK clipboard is preferred)
+* Python 3
+* GTK 3
+* `xdotool` for remote key input to Orca
+* `sox` optional, for tones
+* `xclip` optional, for clipboard fallback
 
-## Supported NVDA Remote Protocol Messages
+## Uninstall
 
-| Message Type | Direction | Status |
-|---|---|---|
-| `protocol_version` | Outbound | Supported |
-| `join` | Outbound | Supported |
-| `channel_joined` | Inbound | Supported |
-| `client_joined` | Inbound | Supported |
-| `client_left` | Inbound | Supported |
-| `generate_key` | Outbound | Supported |
-| `key` | Both | Supported |
-| `speak` | Both | Supported |
-| `cancel` | Both | Supported |
-| `pause_speech` | Inbound | Supported |
-| `tone` | Inbound | Supported |
-| `wave` | Inbound | Supported |
-| `send_SAS` | Both | Supported |
-| `index` | Inbound | Logged |
-| `display` | Inbound | Supported |
-| `braille_input` | Inbound | Logged |
-| `set_braille_info` | Both | Supported |
-| `set_display_size` | Inbound | Logged |
-| `set_clipboard_text` | Both | Supported |
-| `motd` | Inbound | Logged |
-| `version_mismatch` | Inbound | Supported |
-| `ping` | Inbound | Supported |
-| `error` | Inbound | Supported |
-| `nvda_not_connected` | Inbound | Supported |
-
-## Audio Cues
-
-| Event | Sound |
-|---|---|
-| Connected to server | 440Hz + 660Hz |
-| Disconnected | 660Hz + 440Hz |
-| Client joined channel | 1000Hz |
-| Client left channel | 108Hz |
-| Clipboard sent | 500Hz + 600Hz |
-| Clipboard received | 600Hz + 500Hz |
-
-## Uninstallation
-
-```
+```bash
 ./uninstall
 ```
 
 ## Credits
 
-* Based on the [NVDA Remote](https://github.com/nvdaremote/nvdaremote) protocol
+Based on the NVDA Remote protocol.
 
 ## License
 
-Licensed under the GNU GPL Version 2 (due to NVDA Remote code being used).
+GNU GPL v2.
+
+```
