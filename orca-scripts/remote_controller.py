@@ -54,6 +54,7 @@ class RemoteController:
         self.local_machine = LocalMachine()
         self.connected_clients = {}
         self.play_sounds = True
+        self._nvda_not_connected_announced = False
 
         # Register all incoming message handlers
         cb = self.transport.callback_manager
@@ -176,6 +177,7 @@ class RemoteController:
     def _on_transport_disconnected(self):
         log.info("Transport disconnected")
         self.connected_clients.clear()
+        self._nvda_not_connected_announced = False
         if self.control_state == self.REMOTE:
             self.control_state = self.LOCAL
             if self.speech_callback:
@@ -199,6 +201,7 @@ class RemoteController:
             client_id = client.get('id')
             conn_type = client.get('connection_type')
             if client_id:
+                self._nvda_not_connected_announced = False
                 self.connected_clients[client_id] = {
                     'connection_type': conn_type
                 }
@@ -243,8 +246,10 @@ class RemoteController:
 
     def _on_nvda_not_connected(self, **kwargs):
         log.warning("Remote NVDA is not connected")
-        if self.speech_callback:
-            self.speech_callback("Remote NVDA is not connected")
+        if not self._nvda_not_connected_announced:
+            self._nvda_not_connected_announced = True
+            if self.speech_callback:
+                self.speech_callback("Remote NVDA is not connected")
 
     # ---- Incoming Speech & Audio ----
 
