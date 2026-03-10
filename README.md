@@ -55,7 +55,7 @@ To control NVDA from Orca, press **Orca + Alt + Tab**. Press it again to return 
 ## Shortcuts
 
 * **Orca + Alt + Tab**: Toggle remote control
-* **Orca + Alt + Page Up**: Open connect dialog
+* **Orca + Alt + Page Up or Orca + Alt + C  **: Open connect dialog
 * **Orca + Alt + Page Down**: Disconnect
 * **Ctrl + Shift + Orca + C**: Send clipboard
 * **Orca + Alt + M**: Mute or unmute remote audio
