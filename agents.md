@@ -59,7 +59,7 @@ NVDA → relay server → SSL → transport.handle_server_data() → parse()
 ```
 
 ### Key Injection (NVDA → Orca)
-Remote key events are injected into the local Linux system using `xdotool keydown/keyup`. Key names are mapped from NVDA conventions to X11 keysym names via `LocalMachine._map_key_name()`.
+Remote key events use the NVDA Remote protocol v2 `key` payload (`vk_code`, `scan_code`, `extended`, `pressed`). `LocalMachine.send_key()` maps those fields to Linux key names. On GNOME Wayland it injects via the XDG Remote Desktop portal, which may prompt for keyboard-control permission. On X11 it falls back to `xdotool keydown/keyup`; `ydotool` is an optional fallback when configured.
 
 ### Audio
 Tones use `sox` (`play` command) with a pure-Python fallback that generates temporary WAV files and plays them via `paplay`. Wave files use `paplay` or `aplay`.
@@ -90,11 +90,11 @@ Uses GTK clipboard (`Gtk.Clipboard`) as primary, with `xclip` as fallback.
 - `_play_cue()` plays notification beep sequences in background threads
 - On disconnect, auto-reverts to LOCAL control state
 
-### `orca-scripts/local_machine.py` (~275 lines)
+### `orca-scripts/local_machine.py`
 - `is_muted` flag — when True, all incoming speech/audio/tones are silently dropped
 - `speak()` — handles both string and list sequences from NVDA
 - `beep()` — sox primary, python WAV generation fallback
-- `send_key()` — xdotool subprocess for key injection
+- `send_key()` — accepts NVDA-compatible `vk_code`/`scan_code` key messages and injects through portal / xdotool / ydotool
 - `set_clipboard_text()` / `get_clipboard_text()` — GTK primary, xclip fallback
 
 ### `orca-scripts/connect_dialog.py` (~152 lines)
@@ -128,7 +128,7 @@ Uses GTK clipboard (`Gtk.Clipboard`) as primary, with `xclip` as fallback.
 ## Important Conventions
 
 - **No tests**: There is no test suite. This is a plugin that runs inside Orca's process.
-- **No dependencies beyond stdlib + GTK**: The plugin must work with just Python 3 standard library plus GTK 3 (which Orca already requires). External tools (`xdotool`, `sox`, `xclip`) are optional with graceful fallbacks.
+- **No dependencies beyond stdlib + GTK**: The plugin must work with just Python 3 standard library plus GTK 3 (which Orca already requires). External tools (`xdotool`, `ydotool`, `sox`, `xclip`) are optional with graceful fallbacks.
 - **Tabs in transport.py / callback_manager.py**: These files use tabs for indentation (inherited from original NVDA Remote code). All other files use 4-space indentation.
 - **Monkey-patching pattern**: Always save the original function reference before patching, call it inside the wrapper, and return its result.
 - **Thread safety**: GTK operations must go through `GLib.idle_add()`. Transport runs in daemon threads. Gesture registration is delayed 2 seconds to wait for Orca initialization.

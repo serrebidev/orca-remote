@@ -24,6 +24,13 @@ Optional packages:
 sudo apt install xdotool sox xclip
 ````
 
+On GNOME Wayland, receiving remote keys uses the XDG Remote Desktop
+portal instead of `xdotool`. Ubuntu GNOME normally includes
+`xdg-desktop-portal` and `xdg-desktop-portal-gnome`; approve the
+keyboard-control prompt when the first remote key arrives. If your
+desktop does not provide that portal, `ydotool` can be configured as an
+optional fallback.
+
 Install the plugin:
 
 ```bash
@@ -70,7 +77,9 @@ To control NVDA from Orca, press **Orca + Alt + Tab**. Press it again to return 
 
 * Python 3
 * GTK 3
-* `xdotool` for remote key input to Orca
+* XDG Remote Desktop portal for remote key input to Orca on GNOME Wayland
+* `xdotool` for remote key input to Orca on X11
+* `ydotool` optional, for desktops without a working portal
 * `sox` optional, for tones
 * `xclip` optional, for clipboard fallback
 

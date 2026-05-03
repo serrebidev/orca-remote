@@ -6,9 +6,11 @@ This is the equivalent of NVDA Remote's LocalMachine class.
 """
 
 import os
+import shutil
 import subprocess
 import threading
 import time
+import uuid
 from logging import getLogger
 log = getLogger('local_machine')
 
@@ -120,6 +122,400 @@ _VK_TO_XDOTOOL_EXT = {
     0x0D: "KP_Enter",
 }
 
+PORTAL_BUS_NAME = "org.freedesktop.portal.Desktop"
+PORTAL_OBJECT_PATH = "/org/freedesktop/portal/desktop"
+PORTAL_REMOTE_DESKTOP_IFACE = "org.freedesktop.portal.RemoteDesktop"
+PORTAL_REQUEST_IFACE = "org.freedesktop.portal.Request"
+PORTAL_KEYBOARD = 1
+
+KEYSYM_BY_KEY_NAME = {
+    "BackSpace": 0xff08,
+    "Tab": 0xff09,
+    "ISO_Left_Tab": 0xfe20,
+    "Return": 0xff0d,
+    "Escape": 0xff1b,
+    "space": 0x20,
+    "Delete": 0xffff,
+    "Insert": 0xff63,
+    "Home": 0xff50,
+    "End": 0xff57,
+    "Prior": 0xff55,
+    "Next": 0xff56,
+    "Left": 0xff51,
+    "Up": 0xff52,
+    "Right": 0xff53,
+    "Down": 0xff54,
+    "Print": 0xff61,
+    "Scroll_Lock": 0xff14,
+    "Pause": 0xff13,
+    "Caps_Lock": 0xffe5,
+    "Num_Lock": 0xff7f,
+    "Shift_L": 0xffe1,
+    "Shift_R": 0xffe2,
+    "Control_L": 0xffe3,
+    "Control_R": 0xffe4,
+    "Alt_L": 0xffe9,
+    "Alt_R": 0xffea,
+    "Super_L": 0xffeb,
+    "Super_R": 0xffec,
+    "Menu": 0xff67,
+    "minus": ord("-"),
+    "equal": ord("="),
+    "bracketleft": ord("["),
+    "bracketright": ord("]"),
+    "backslash": ord("\\"),
+    "semicolon": ord(";"),
+    "apostrophe": ord("'"),
+    "grave": ord("`"),
+    "comma": ord(","),
+    "period": ord("."),
+    "slash": ord("/"),
+    "KP_Enter": 0xff8d,
+    "KP_Home": 0xff95,
+    "KP_Left": 0xff96,
+    "KP_Up": 0xff97,
+    "KP_Right": 0xff98,
+    "KP_Down": 0xff99,
+    "KP_Prior": 0xff9a,
+    "KP_Next": 0xff9b,
+    "KP_End": 0xff9c,
+    "KP_Begin": 0xff9d,
+    "KP_Insert": 0xff9e,
+    "KP_Delete": 0xff9f,
+    "KP_Multiply": 0xffaa,
+    "KP_Add": 0xffab,
+    "KP_Subtract": 0xffad,
+    "KP_Decimal": 0xffae,
+    "KP_Divide": 0xffaf,
+}
+for _index in range(1, 13):
+    KEYSYM_BY_KEY_NAME["F%d" % _index] = 0xffbd + _index
+for _index in range(10):
+    KEYSYM_BY_KEY_NAME["KP_%d" % _index] = 0xffb0 + _index
+
+YDO_KEYCODE_BY_KEY_NAME = {
+    "Escape": 1,
+    "1": 2, "2": 3, "3": 4, "4": 5, "5": 6,
+    "6": 7, "7": 8, "8": 9, "9": 10, "0": 11,
+    "minus": 12,
+    "equal": 13,
+    "BackSpace": 14,
+    "Tab": 15,
+    "q": 16, "w": 17, "e": 18, "r": 19, "t": 20,
+    "y": 21, "u": 22, "i": 23, "o": 24, "p": 25,
+    "bracketleft": 26,
+    "bracketright": 27,
+    "Return": 28,
+    "Control_L": 29,
+    "a": 30, "s": 31, "d": 32, "f": 33, "g": 34,
+    "h": 35, "j": 36, "k": 37, "l": 38,
+    "semicolon": 39,
+    "apostrophe": 40,
+    "grave": 41,
+    "Shift_L": 42,
+    "backslash": 43,
+    "z": 44, "x": 45, "c": 46, "v": 47, "b": 48,
+    "n": 49, "m": 50,
+    "comma": 51,
+    "period": 52,
+    "slash": 53,
+    "Shift_R": 54,
+    "KP_Multiply": 55,
+    "Alt_L": 56,
+    "space": 57,
+    "Caps_Lock": 58,
+    "Num_Lock": 69,
+    "Scroll_Lock": 70,
+    "KP_Home": 71,
+    "KP_Up": 72,
+    "KP_Prior": 73,
+    "KP_Subtract": 74,
+    "KP_Left": 75,
+    "KP_Begin": 76,
+    "KP_Right": 77,
+    "KP_Add": 78,
+    "KP_End": 79,
+    "KP_Down": 80,
+    "KP_Next": 81,
+    "KP_Insert": 82,
+    "KP_Delete": 83,
+    "KP_Enter": 96,
+    "Control_R": 97,
+    "KP_Divide": 98,
+    "Print": 99,
+    "Alt_R": 100,
+    "Home": 102,
+    "Up": 103,
+    "Prior": 104,
+    "Left": 105,
+    "Right": 106,
+    "End": 107,
+    "Down": 108,
+    "Next": 109,
+    "Insert": 110,
+    "Delete": 111,
+    "Pause": 119,
+    "Super_L": 125,
+    "Super_R": 126,
+    "Menu": 127,
+}
+for _index in range(1, 11):
+    YDO_KEYCODE_BY_KEY_NAME["F%d" % _index] = 58 + _index
+YDO_KEYCODE_BY_KEY_NAME["F11"] = 87
+YDO_KEYCODE_BY_KEY_NAME["F12"] = 88
+YDO_KEYCODE_BY_KEY_NAME.update({
+    "KP_0": 82,
+    "KP_1": 79,
+    "KP_2": 80,
+    "KP_3": 81,
+    "KP_4": 75,
+    "KP_5": 76,
+    "KP_6": 77,
+    "KP_7": 71,
+    "KP_8": 72,
+    "KP_9": 73,
+})
+
+
+class PortalKeyboardInjector:
+    """Keyboard injection through the XDG Remote Desktop portal."""
+
+    def __init__(self):
+        self._lock = threading.RLock()
+        self._bus = None
+        self._session_handle = None
+        self._started = False
+        self.denied = False
+        self.unavailable = False
+        self._warned_failure = False
+
+    def send_key(self, key_name, pressed):
+        if self.unavailable:
+            return False
+        keycode = self._keycode_from_key_name(key_name)
+        keysym = None if keycode is not None else self._keysym_from_key_name(key_name)
+        if keycode is None and keysym is None:
+            _dbg("portal: cannot map key %r" % key_name)
+            return False
+        try:
+            if not self._ensure_session():
+                return False
+        except Exception:
+            self.unavailable = True
+            self._log_failure("Remote Desktop portal setup failed")
+            return False
+
+        method = "NotifyKeyboardKeycode"
+        key_value = keycode
+        if key_value is None:
+            method = "NotifyKeyboardKeysym"
+            key_value = keysym
+        try:
+            GLib, Gio = self._load_gio()
+            self._bus.call_sync(
+                PORTAL_BUS_NAME,
+                PORTAL_OBJECT_PATH,
+                PORTAL_REMOTE_DESKTOP_IFACE,
+                method,
+                GLib.Variant(
+                    "(oa{sv}iu)",
+                    (self._session_handle, {}, int(key_value),
+                     1 if pressed else 0)
+                ),
+                None,
+                Gio.DBusCallFlags.NONE,
+                5000,
+                None
+            )
+            return True
+        except Exception:
+            self._started = False
+            self._log_failure("Remote Desktop portal key injection failed")
+            return False
+
+    def _ensure_session(self):
+        with self._lock:
+            if self._started:
+                return True
+            if self.denied:
+                return False
+
+            GLib, Gio = self._load_gio()
+            self._bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+
+            session_token = self._new_token("session")
+            create_results = self._portal_request(
+                "CreateSession",
+                lambda token: GLib.Variant("(a{sv})", ({
+                    "handle_token": GLib.Variant("s", token),
+                    "session_handle_token": GLib.Variant("s", session_token),
+                },))
+            )
+            self._session_handle = self._variant_value(
+                create_results.get("session_handle")
+            )
+            if not self._session_handle:
+                raise RuntimeError("Portal did not return a session handle")
+
+            self._portal_request(
+                "SelectDevices",
+                lambda token: GLib.Variant("(oa{sv})", (
+                    self._session_handle,
+                    {
+                        "handle_token": GLib.Variant("s", token),
+                        "types": GLib.Variant("u", PORTAL_KEYBOARD),
+                    }
+                ))
+            )
+            start_results = self._portal_request(
+                "Start",
+                lambda token: GLib.Variant("(osa{sv})", (
+                    self._session_handle,
+                    "",
+                    {"handle_token": GLib.Variant("s", token)}
+                ))
+            )
+            devices = self._variant_value(start_results.get("devices"), 0)
+            if not devices & PORTAL_KEYBOARD:
+                self.denied = True
+                _dbg("portal: keyboard access was not granted")
+                return False
+            self._started = True
+            return True
+
+    def _portal_request(self, method, params_factory):
+        GLib, Gio = self._load_gio()
+        token = self._new_token(method.lower())
+        expected_path = self._request_path(token)
+        response_data = {"done": False, "response": None, "results": None}
+        loop = GLib.MainLoop()
+
+        def on_response(
+                connection, sender_name, object_path, interface_name,
+                signal_name, parameters, user_data):
+            response, results = parameters.unpack()
+            response_data["done"] = True
+            response_data["response"] = response
+            response_data["results"] = results
+            loop.quit()
+
+        sub_ids = [
+            self._bus.signal_subscribe(
+                PORTAL_BUS_NAME,
+                PORTAL_REQUEST_IFACE,
+                "Response",
+                expected_path,
+                None,
+                Gio.DBusSignalFlags.NONE,
+                on_response,
+                None
+            )
+        ]
+        timeout_id = GLib.timeout_add_seconds(300, loop.quit)
+        try:
+            reply = self._bus.call_sync(
+                PORTAL_BUS_NAME,
+                PORTAL_OBJECT_PATH,
+                PORTAL_REMOTE_DESKTOP_IFACE,
+                method,
+                params_factory(token),
+                GLib.VariantType.new("(o)"),
+                Gio.DBusCallFlags.NONE,
+                30000,
+                None
+            )
+            request_path = reply.unpack()[0]
+            if request_path != expected_path:
+                sub_ids.append(self._bus.signal_subscribe(
+                    PORTAL_BUS_NAME,
+                    PORTAL_REQUEST_IFACE,
+                    "Response",
+                    request_path,
+                    None,
+                    Gio.DBusSignalFlags.NONE,
+                    on_response,
+                    None
+                ))
+            if not response_data["done"]:
+                loop.run()
+        finally:
+            try:
+                GLib.source_remove(timeout_id)
+            except Exception:
+                pass
+            for sub_id in sub_ids:
+                self._bus.signal_unsubscribe(sub_id)
+
+        if not response_data["done"]:
+            raise RuntimeError("Timed out waiting for portal %s response" % method)
+        if response_data["response"] == 1:
+            self.denied = True
+            _dbg("portal: request denied for %s" % method)
+            return {}
+        if response_data["response"] != 0:
+            raise RuntimeError(
+                "Portal %s failed with response %s"
+                % (method, response_data["response"])
+            )
+        return response_data["results"] or {}
+
+    def _request_path(self, token):
+        sender = self._bus.get_unique_name()[1:].replace(".", "_")
+        return "/org/freedesktop/portal/desktop/request/%s/%s" % (
+            sender, token
+        )
+
+    def _log_failure(self, message):
+        if self._warned_failure:
+            return
+        self._warned_failure = True
+        log.exception(message)
+        _dbg(message)
+
+    @staticmethod
+    def _new_token(prefix):
+        return "orcaremote_%s_%s" % (prefix, uuid.uuid4().hex)
+
+    @staticmethod
+    def _variant_value(value, default=None):
+        if value is None:
+            return default
+        if hasattr(value, "unpack"):
+            return value.unpack()
+        return value
+
+    @staticmethod
+    def _load_gio():
+        import gi
+        from gi.repository import GLib, Gio
+        return GLib, Gio
+
+    @staticmethod
+    def _keycode_from_key_name(key_name):
+        if not key_name:
+            return None
+        if len(key_name) == 1:
+            key_name = key_name.lower()
+        return YDO_KEYCODE_BY_KEY_NAME.get(key_name)
+
+    @staticmethod
+    def _keysym_from_key_name(key_name):
+        if not key_name:
+            return None
+        if len(key_name) == 1:
+            return ord(key_name)
+        keysym = KEYSYM_BY_KEY_NAME.get(key_name)
+        if keysym is not None:
+            return keysym
+        try:
+            import gi
+            gi.require_version("Gdk", "3.0")
+            from gi.repository import Gdk
+            keysym = Gdk.keyval_from_name(key_name)
+            return keysym or None
+        except Exception:
+            return None
+
 
 class LocalMachine:
     """Executes remote commands on the local Orca/Linux machine."""
@@ -127,6 +523,9 @@ class LocalMachine:
     def __init__(self):
         self.is_muted = False
         self._speech_paused = False
+        self._portal_injector = None
+        self._warned_no_key_backend = False
+        self._warned_ydotool = False
 
     # ---- Speech ----
 
@@ -325,9 +724,9 @@ class LocalMachine:
         Accepts either key_name (Orca-to-Orca path) or vk_code/extended
         (NVDA-to-Orca path, Windows Virtual Key codes).
 
-        Uses AT-SPI generateKeyboardEvent as the primary injection method so
-        that keystrokes reach Wayland-native apps (GTK4, GNOME shell, etc.)
-        as well as X11/XWayland apps.  Falls back to xdotool if AT-SPI fails.
+        On GNOME Wayland, uses the XDG Remote Desktop portal so the
+        compositor can authorize keyboard control. On X11, uses xdotool.
+        ydotool is an optional fallback when configured.
         """
         if pressed is None:
             return
@@ -337,9 +736,28 @@ class LocalMachine:
                 key_name, vk_code, extended))
             return
         _dbg("send_key: %s %s" % ("press" if pressed else "release", key))
-        # xdotool (XTest) injection. AT-SPI generateKeyboardEvent was tried but
-        # on this system (Asahi Linux / Wayland) it accepts the call silently
-        # without actually delivering keys to apps.
+
+        if self._is_wayland_session():
+            if self._send_key_portal(key, pressed):
+                return
+            if self._portal_denied():
+                return
+            if self._send_key_ydotool(key, pressed):
+                return
+            self._warn_no_key_backend()
+            return
+
+        if self._send_key_xdotool(key, pressed):
+            return
+        if self._send_key_ydotool(key, pressed):
+            return
+        if self._send_key_portal(key, pressed):
+            return
+        self._warn_no_key_backend()
+
+    def _send_key_xdotool(self, key, pressed):
+        if shutil.which("xdotool") is None:
+            return False
         try:
             action = "keydown" if pressed else "keyup"
             result = subprocess.run(
@@ -348,9 +766,57 @@ class LocalMachine:
             )
             if result.returncode != 0:
                 _dbg("xdotool error: %s" % result.stderr.decode().strip())
+                return False
+            return True
         except FileNotFoundError:
             _dbg("xdotool not found")
-            log.warning("xdotool not found for key injection")
+            return False
+
+    def _send_key_portal(self, key, pressed):
+        if self._portal_injector is None:
+            self._portal_injector = PortalKeyboardInjector()
+        return self._portal_injector.send_key(key, pressed)
+
+    def _send_key_ydotool(self, key, pressed):
+        keycode = PortalKeyboardInjector._keycode_from_key_name(key)
+        if keycode is None or shutil.which("ydotool") is None:
+            return False
+        try:
+            result = subprocess.run(
+                ["ydotool", "key", "%d:%d" % (keycode, 1 if pressed else 0)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=1
+            )
+            if result.returncode == 0:
+                return True
+            if not self._warned_ydotool:
+                self._warned_ydotool = True
+                _dbg("ydotool failed; is ydotoold running?")
+            return False
+        except Exception:
+            if not self._warned_ydotool:
+                self._warned_ydotool = True
+                log.exception("ydotool key injection failed")
+            return False
+
+    def _warn_no_key_backend(self):
+        if self._warned_no_key_backend:
+            return
+        self._warned_no_key_backend = True
+        _dbg(
+            "No usable key injection backend. On GNOME Wayland, approve the "
+            "Remote Desktop portal prompt or configure ydotoold. On X11, "
+            "install xdotool."
+        )
+        log.warning(
+            "No usable key injection backend. On GNOME Wayland, approve the "
+            "Remote Desktop portal prompt or configure ydotoold. On X11, "
+            "install xdotool."
+        )
+
+    def _portal_denied(self):
+        return bool(self._portal_injector and self._portal_injector.denied)
 
     def send_sas(self, **kwargs):
         """Handle Ctrl+Alt+Del request (not applicable on Linux)."""
@@ -382,6 +848,13 @@ class LocalMachine:
         return self.is_muted
 
     # ---- Helpers ----
+
+    @staticmethod
+    def _is_wayland_session():
+        return (
+            os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland"
+            or bool(os.environ.get("WAYLAND_DISPLAY"))
+        )
 
     @staticmethod
     def _resolve_key(key_name, vk_code, extended):
@@ -421,7 +894,7 @@ class LocalMachine:
             "pagedown": "Next",
             "delete": "Delete",
             "insert": "Insert",
-            "numpadinsert": "Insert",
+            "numpadinsert": "KP_Insert",
             "capslock": "Caps_Lock",
             "numlock": "Num_Lock",
             "scrolllock": "Scroll_Lock",
@@ -432,4 +905,6 @@ class LocalMachine:
             "f5": "F5", "f6": "F6", "f7": "F7", "f8": "F8",
             "f9": "F9", "f10": "F10", "f11": "F11", "f12": "F12",
         }
+        for index in range(10):
+            key_map["numpad%d" % index] = "KP_%d" % index
         return key_map.get(key_name.lower(), key_name)

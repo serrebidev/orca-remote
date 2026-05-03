@@ -59,9 +59,13 @@ def main():
     print("  Orca+Shift+Delete   = Send Ctrl+Alt+Del to remote")
     print("")
     print("Optional dependencies:")
-    print("  sudo apt install xdotool   # Required for remote key injection")
+    print("  sudo apt install xdotool   # X11 remote key injection")
+    print("  sudo apt install ydotool   # Optional Wayland fallback if configured")
     print("  sudo apt install sox       # For tone playback")
     print("  sudo apt install xclip     # Clipboard fallback")
+    print("")
+    print("GNOME Wayland key injection uses the XDG Remote Desktop portal.")
+    print("Approve the keyboard-control prompt when the first remote key arrives.")
     return 0
 
 if __name__ == "__main__":
