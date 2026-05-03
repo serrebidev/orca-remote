@@ -142,6 +142,14 @@ Uses GTK clipboard (`Gtk.Clipboard`) as primary, with `xclip` as fallback.
 - **Install without args**: `./install` works with no arguments. The plugin loads but does not auto-connect — user connects via the dialog (Orca+Alt+PageUp). If args are passed (`./install host port key`), the sentinels are replaced and auto-connect is enabled.
 - The sentinel values `"host"`, `6837`, and `"key"` in orca-customizations.py must remain exactly as-is in the repo. The `_has_config` check at startup compares against these to decide whether to auto-connect.
 
+## Git / GitHub Workflow
+
+- **Default branch is `master`**. Unless the user explicitly asks to work on a separate branch, make changes on `master`, commit on `master`, and push `origin master`.
+- Before starting GitHub-visible work, run `git status --short --branch` and `git ls-remote --symref origin HEAD refs/heads/master` to verify the local branch and the remote default branch.
+- Do not assume the current checkout is the branch the GitHub homepage displays. The plain repository URL shows the remote default branch (`origin/HEAD`), not necessarily `master`.
+- After pushing, verify the remote with `git ls-remote origin refs/heads/master` and confirm it matches the local commit. If the user asked for the plain GitHub repo URL to update, verify `origin/HEAD` points to `master` as well.
+- Only push or update a non-`master` branch when the user explicitly asks for branch work. If branch work is requested, name the branch in the final response and do not claim the GitHub homepage is updated unless that branch is the default or has been merged.
+
 ## Common Tasks for Agents
 
 ### Adding a new message type handler
