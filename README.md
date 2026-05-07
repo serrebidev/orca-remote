@@ -98,3 +98,6 @@ Based on the NVDA Remote protocol.
 GNU GPL v2.
 
 ```
+
+##Submit bugs in issues, or join my Telegram group!
+(https://t.me/SerrebiProjects)
