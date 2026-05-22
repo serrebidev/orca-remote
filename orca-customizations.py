@@ -188,14 +188,14 @@ def my_speak(self, text, acss, **kw):
         transport.send(type="speak", sequence=text)
     return old_speak(self, text, acss, **kw)
 
-def my_speak_character(self, character, acss=None):
+def my_speak_character(self, character, acss=None, *args, **kw):
     global _want_cancel
     if transport.connected and transport.connection_type == "slave":
         if _want_cancel:
             transport.send(type="cancel")
             _want_cancel = False
         transport.send(type="speak", sequence=[character])
-    return old_speakCharacter(self, character, acss)
+    return old_speakCharacter(self, character, acss, *args, **kw)
 
 def my_stop(self):
     # Defer the cancel: record the intent but don't send it to NVDA yet.
