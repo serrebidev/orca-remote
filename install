@@ -5,8 +5,10 @@ import os
 import shutil
 import sys
 
+
 def replace_string(text, default, new):
     return text.replace('"%s"' % default, '"%s"' % new)
+
 
 def make_orca_customizations(destfile, nvda_remote_host=None, nvda_remote_port=None, nvda_remote_key=None):
     with open("orca-customizations.py", "r") as f:
@@ -20,10 +22,13 @@ def make_orca_customizations(destfile, nvda_remote_host=None, nvda_remote_port=N
         with open(destfile, "w") as f2:
             f2.write(customizations)
 
+
 def main():
     orca_folder = os.path.expanduser("~/.local/share/orca")
     orca_scripts_folder = os.path.join(orca_folder, "orca-scripts")
-    input("Installing Orca Remote to %s. Press Enter to continue or Ctrl+C to abort:" % orca_folder)
+    print("This installs the legacy Orca Remote customization path.")
+    print("For modern Orca versions, prefer: ./build-orca-ext.sh . && orca --install-extension remote.orca-ext")
+    input("Installing legacy Orca Remote to %s. Press Enter to continue or Ctrl+C to abort:" % orca_folder)
 
     customizations_path = os.path.join(orca_folder, "orca-customizations.py")
     if os.path.exists(customizations_path):
@@ -42,7 +47,7 @@ def main():
         shutil.copy(file, os.path.join(orca_folder, file))
 
     print("")
-    print("Installation complete. Restart Orca with: orca --replace")
+    print("Legacy installation complete. Restart Orca with: orca --replace")
     print("")
     if len(sys.argv) >= 4:
         print("Auto-connect is configured. Orca will connect on startup.")
@@ -67,6 +72,7 @@ def main():
     print("GNOME Wayland key injection uses the XDG Remote Desktop portal.")
     print("Approve the keyboard-control prompt when the first remote key arrives.")
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

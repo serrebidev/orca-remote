@@ -1,175 +1,216 @@
-# Agents Guide — Orca Remote
-Update this file when necesary.
+# Agents Guide - Orca Remote
+
+Update this file when necessary.
+
 ## What This Project Is
 
-Orca Remote is an Orca screen reader plugin that enables bidirectional communication between **Orca** (GNOME/Linux screen reader) and **NVDA** (Windows screen reader) using the **NVDA Remote protocol v2**. It allows either screen reader to control the other over an SSL/TLS network connection through a relay server.
+Orca Remote is an Orca screen reader plugin/extension that enables bidirectional communication between Orca on Linux and NVDA Remote-compatible peers using the NVDA Remote protocol v2.
 
-This is **not** a standalone application. It is a monkey-patch plugin loaded by Orca at startup via `~/.local/share/orca/orca-customizations.py`.
+The primary implementation is now a modern Orca user extension packaged as `remote.orca-ext`. The legacy `orca-customizations.py` monkey-patch plugin remains in the repository for older Orca installations and compatibility testing.
 
 ## Architecture Overview
 
-```
-orca-customizations.py          Entry point — loaded by Orca on startup
-  ├── Patches SpeechServer       (forward local speech to remote)
-  ├── Patches KeyboardEvent      (intercept keys when controlling remote)
-  ├── Registers 6 Orca gestures  (keybindings for all remote features)
-  └── Creates transport + controller instances
+Modern extension path:
 
+```text
+manifest.toml                  Orca extension metadata
+remote.py                      RemoteExtension entry point and state machines
+  - registers Orca commands
+  - owns settings lifecycle
+  - bridges GLib main thread and asyncio transport thread
+  - mirrors speech/braille/clipboard
+  - forwards or synthesizes remote keys
+
+transport.py                   asyncio TLS transport, reconnect, fingerprint pinning
+protocol.py                    NVDA Remote newline-JSON framing and helpers
+keymap.py                      Windows VK <-> X11 keysym mapping
+braille_table.py               text -> braille cell mapping
+settings_dialog.py             GTK 3 non-blocking settings dialog
+vendor/orca_ext_utils/         vendored KeysetGrab support for keyboard consume
+```
+
+Legacy compatibility path:
+
+```text
+orca-customizations.py          Loaded by Orca from ~/.local/share/orca/
 orca-scripts/
-  ├── transport.py               SSL/TCP networking, NVDA Remote protocol handshake
-  ├── remote_controller.py       State machine, all 24 message handlers, audio cues
-  ├── local_machine.py           Executes remote commands locally (speech, keys, clipboard, tones, braille)
-  ├── connect_dialog.py          GTK 3 accessible dialog for connection parameters
-  ├── callback_manager.py        Simple event dispatcher (event → list of callbacks)
-  └── serializer.py              JSON serialization with newline delimiters
+  transport.py                  SSL/TCP networking and NVDA Remote handshake
+  remote_controller.py          Legacy controller and message handlers
+  local_machine.py              Local speech/key/clipboard/audio/braille actions
+  connect_dialog.py             Legacy GTK connect dialog
+  callback_manager.py           Event dispatcher
+  serializer.py                 JSON newline framing
+  local_server.py               Built-in legacy relay server
 ```
 
-## Key Concepts
+## Modern Extension Concepts
 
-### Plugin Mechanism
-Orca executes `~/.local/share/orca/orca-customizations.py` on startup. The plugin works by **monkey-patching** Orca's internal classes:
-- `SpeechServer._speak`, `.speak_character`, `.stop` — intercepted to forward speech to the remote NVDA
-- `KeyboardEvent.process` — intercepted to forward keystrokes when in remote control mode
+### Orca Extension API
 
-### NVDA Remote Protocol v2
-- **Transport**: SSL/TLS over TCP, default port 6837
-- **Serialization**: JSON objects delimited by `\n` (newline), UTF-8 encoded
-- **Handshake**: Client sends `protocol_version` then `join` with channel key and connection type
-- **Connection types**: `"master"` (controller) and `"slave"` (controlled)
-- **24 message types** handled: see README.md for the full table
+`RemoteExtension` subclasses `orca.extension.Extension`. Commands are registered through `_get_commands()` and use Orca `KeyboardCommand` bindings.
 
-### Control State Machine
-`RemoteController` has two states:
-- `LOCAL` (default) — keystrokes processed by Orca normally
-- `REMOTE` — keystrokes forwarded to NVDA via `{"type": "key", ...}` messages
+The extension starts an asyncio event loop in a daemon thread. Orca, GTK, AT-SPI, and controller calls must stay on the GLib main thread. Cross-thread calls use:
 
-The toggle gesture (Orca+Alt+Tab) is **always** processed locally even in REMOTE mode — it's the escape hatch.
+- GLib to asyncio: `asyncio.run_coroutine_threadsafe(...)`, normally through `_schedule_send`.
+- asyncio to GLib: `GLib.idle_add(...)`, returning `False` for one-shot callbacks.
 
-### Message Flow (outbound, slave mode)
-```
-Orca speaks → my_speak() → transport.send(type="speak") → JSON → SSL → relay server → NVDA
+### Settings
+
+Settings live in:
+
+```text
+$XDG_DATA_HOME/orca/orca-remote-settings.json
 ```
 
-### Message Flow (inbound)
-```
-NVDA → relay server → SSL → transport.handle_server_data() → parse()
-  → callback_manager.call_callbacks("msg_<type>")
-  → RemoteController._on_remote_<type>()
-  → LocalMachine.<action>()
+Usually this is:
+
+```text
+~/.local/share/orca/orca-remote-settings.json
 ```
 
-### Key Injection (NVDA → Orca)
-Remote key events use the NVDA Remote protocol v2 `key` payload (`vk_code`, `scan_code`, `extended`, `pressed`). `LocalMachine.send_key()` maps those fields to Linux key names. On GNOME Wayland it injects via the XDG Remote Desktop portal, which may prompt for keyboard-control permission. On X11 it falls back to `xdotool keydown/keyup`; `ydotool` is an optional fallback when configured.
+The settings file is written with `0o600` permissions because the channel key is a shared secret.
 
-### Audio
-Tones use `sox` (`play` command) with a pure-Python fallback that generates temporary WAV files and plays them via `paplay`. Wave files use `paplay` or `aplay`.
+### TLS Fingerprint Pinning
+
+The modern transport does not use CA trust or TOFU. It computes the relay certificate SHA-256 fingerprint after TLS handshake and refuses the connection unless the configured fingerprint matches. On mismatch, it reports the actual fingerprint so the UI can copy it to the clipboard.
+
+### Roles
+
+- `client` maps to NVDA Remote `master`: receive remote speech/braille and send keys.
+- `host` maps to NVDA Remote `slave`: broadcast local speech/braille and accept keys.
+
+### Key Forwarding
+
+Modern key forwarding uses `keymap.keysym_to_vk()` for outbound keys and `keymap.vk_to_keysym()` for inbound keys.
+
+When the client is focused on the remote:
+
+- Forwardable keys are sent as NVDA Remote `key` messages.
+- Orca Remote's own command chords bypass forwarding and dispatch locally.
+- `KeysetGrab` tries to consume forwarded keys at the AT-SPI level so they do not also act on the focused local app.
+
+Inbound host-side key synthesis keeps modifier keys sticky but taps ordinary keys with press+release in the same idle callback to avoid X11 auto-repeat floods.
+
+### Braille
+
+Outbound host braille uses `braille_table.text_to_cells()` and sends NVDA Remote `display` frames. Inbound client braille renders cells as Unicode braille block characters through `controller.display_braille_text` when that Orca hook exists.
 
 ### Clipboard
-Uses GTK clipboard (`Gtk.Clipboard`) as primary, with `xclip` as fallback.
 
-## File Details
+Modern extension clipboard operations use the Orca controller clipboard helpers. Legacy mode uses GTK clipboard first, with `xclip` fallback.
 
-### `orca-customizations.py` (entry point, ~297 lines)
-- **Config**: Lines 7-10 — `YOUR_NVDAREMOTE_SERVER_ADDRESS`, `_PORT`, `_KEY` (replaced by install script)
-- **Speech patches**: Lines 60-79 — monkey-patches `SpeechServer` to forward speech
-- **Key interception**: Lines 83-144 — patches `KeyboardEvent.process` for remote control mode
-- **Gesture handlers**: Lines 148-208 — 6 handler functions for keybindings
-- **Gesture registration**: Lines 212-296 — `_register_gestures()` runs on GLib idle after 2-second delay
-- Uses `getattr()` with fallbacks for Orca keybinding constants to support different Orca versions
+## Legacy Plugin Concepts
 
-### `orca-scripts/transport.py` (~200 lines)
-- `Transport` — base class with `callback_manager`, `connected` flag
-- `TCPTransport` — SSL socket, `select.select()` read loop, queue-based send thread, auto-reconnect
-- `RelayTransport` — NVDA Remote handshake (`protocol_version` + `join`), `reconnect()` method
-- `ConnectorThread` — daemon thread, retries connection every 5 seconds on failure
-- **SSL**: Uses `ssl.SSLContext(PROTOCOL_VERSION)` with `check_hostname=False`
+Orca executes `~/.local/share/orca/orca-customizations.py` on startup. The legacy plugin monkey-patches Orca internals:
 
-### `orca-scripts/remote_controller.py` (~308 lines)
-- Registers 24 `msg_*` callbacks on the transport's callback_manager
-- Tracks `connected_clients` dict (client_id → {connection_type})
-- `_play_cue()` plays notification beep sequences in background threads
-- On disconnect, auto-reverts to LOCAL control state
+- `SpeechServer._speak`, `speak_character`, and `stop` to forward speech.
+- `KeyboardEvent.process` to forward keystrokes while remote control is active.
 
-### `orca-scripts/local_machine.py`
-- `is_muted` flag — when True, all incoming speech/audio/tones are silently dropped
-- `speak()` — handles both string and list sequences from NVDA
-- `beep()` — sox primary, python WAV generation fallback
-- `send_key()` — accepts NVDA-compatible `vk_code`/`scan_code` key messages and injects through portal / xdotool / ydotool
-- `set_clipboard_text()` / `get_clipboard_text()` — GTK primary, xclip fallback
+The sentinel values `"host"`, `6837`, and `"key"` in `orca-customizations.py` must remain exactly as-is. The legacy installer replaces them only when auto-connect arguments are provided.
 
-### `orca-scripts/connect_dialog.py` (~152 lines)
-- GTK 3 dialog, must run on the GTK main thread via `GLib.idle_add()`
-- `run_threadsafe(callback)` — safe to call from any thread
-- All widgets have AT-SPI accessible names and mnemonic underlines
-- Radio buttons for master/slave mode, generate key button (random 7-digit)
+## Shortcuts
 
-### `orca-scripts/callback_manager.py` (~31 lines)
-- `defaultdict(list)` mapping event_type → [callbacks]
-- Wildcard `'*'` callbacks receive all events with `(type, *args, **kwargs)`
-- Exceptions in callbacks are logged but don't break execution
+Modern extension shortcuts:
 
-### `orca-scripts/serializer.py` (~16 lines)
-- `serialize(type=None, **obj)` → `b'{"type": "...", ...}\n'`
-- `deserialize(data)` → dict
+| Gesture | Handler |
+|---|---|
+| Orca+Ctrl+R | `open_settings` |
+| Orca+Ctrl+M | `mute_inbound_toggle` |
+| Orca+Ctrl+PageUp | `connect` |
+| Orca+Ctrl+PageDown | `disconnect_session` |
+| Ctrl+Shift+Orca+C | `push_clipboard` |
+| Orca+Alt+Tab | `switch_side` |
 
-## Registered Gestures
+Legacy shortcuts:
 
-| Gesture | Handler | Modifier Mask Used |
-|---|---|---|
-| Orca+Alt+Tab | `_toggle_remote_control` | `orca_alt` |
-| Orca+Alt+PageUp | `_show_connect_dialog` | `orca_alt` |
-| Orca+Alt+PageDown | `_disconnect` | `orca_alt` |
-| Ctrl+Shift+Orca+C | `_push_clipboard` | `ctrl_shift_orca` |
-| Orca+Alt+M | `_toggle_mute` | `orca_alt` |
-| Orca+Shift+Delete | `_send_ctrl_alt_del` | `orca_shift` |
+| Gesture | Handler |
+|---|---|
+| Orca+Alt+Tab | `_toggle_remote_control` |
+| Orca+Alt+PageUp / Orca+Alt+C | `_show_connect_dialog` |
+| Orca+Alt+PageDown / Orca+Alt+D | `_disconnect` |
+| Ctrl+Shift+Orca+C | `_push_clipboard` |
+| Orca+Alt+M | `_toggle_mute` |
+| Orca+Shift+Delete | `_send_ctrl_alt_del` |
 
-**Conflict avoidance**: These were verified against all official GNOME Orca keybindings in both desktop (Insert) and laptop (CapsLock) layouts. `Orca+Alt+M` was specifically chosen over `Orca+Shift+M` because `CapsLock+M` is "previous character" in laptop flat review mode.
+## Build And Test
+
+Build modern extension:
+
+```bash
+./build-orca-ext.sh .
+```
+
+The archive should include only:
+
+- `manifest.toml`
+- `__init__.py`
+- `remote.py`
+- `settings_dialog.py`
+- `transport.py`
+- `protocol.py`
+- `keymap.py`
+- `braille_table.py`
+- `vendor/`
+- `LICENSE`
+
+Run tests:
+
+```bash
+python3 -m pytest tests/
+```
+
+There is no full Orca integration test suite in this repo. Prefer pure-function tests for protocol, keymap, and braille behavior, and verify live behavior in an Orca session when changing controller hooks or keyboard handling.
 
 ## Important Conventions
 
-- **No tests**: There is no test suite. This is a plugin that runs inside Orca's process.
-- **No dependencies beyond stdlib + GTK**: The plugin must work with just Python 3 standard library plus GTK 3 (which Orca already requires). External tools (`xdotool`, `ydotool`, `sox`, `xclip`) are optional with graceful fallbacks.
-- **Tabs in transport.py / callback_manager.py**: These files use tabs for indentation (inherited from original NVDA Remote code). All other files use 4-space indentation.
-- **Monkey-patching pattern**: Always save the original function reference before patching, call it inside the wrapper, and return its result.
-- **Thread safety**: GTK operations must go through `GLib.idle_add()`. Transport runs in daemon threads. Gesture registration is delayed 2 seconds to wait for Orca initialization.
-- **Defensive attribute access**: Use `hasattr()` and `getattr()` when accessing Orca internals since the API varies between versions.
-- **Error handling**: All patches and registrations are wrapped in try/except to avoid breaking Orca if something fails. Failures are printed to stdout/logged but never raise.
+- Prefer the modern extension path for new features.
+- Keep the legacy monkey-patch plugin working unless explicitly removing it.
+- No runtime dependencies beyond Python stdlib plus Orca/GTK/GI for the extension. Vendored utilities must stay under `vendor/`.
+- GTK, Orca controller, and AT-SPI calls must run on the GLib main thread.
+- Transport code must not block the GLib thread.
+- Be defensive with Orca internals; hooks vary by Orca version.
+- Keep error handling non-fatal so Orca does not crash if a feature is unavailable.
+- Use `apply_patch` for manual edits.
 
 ## Install / Uninstall Scripts
 
-- `install` — Takes 3 args (host, port, key), does string replacement in `orca-customizations.py` to inject config, copies everything to `~/.local/share/orca/`
-- `uninstall` — Removes installed files, restores backup of original `orca-customizations.py`
-- **Install without args**: `./install` works with no arguments. The plugin loads but does not auto-connect — user connects via the dialog (Orca+Alt+PageUp). If args are passed (`./install host port key`), the sentinels are replaced and auto-connect is enabled.
-- The sentinel values `"host"`, `6837`, and `"key"` in orca-customizations.py must remain exactly as-is in the repo. The `_has_config` check at startup compares against these to decide whether to auto-connect.
+- `build-orca-ext.sh` builds the modern extension archive.
+- `install` installs the legacy `orca-customizations.py` path.
+- `uninstall` removes the legacy install and restores a legacy backup if present.
 
 ## Git / GitHub Workflow
 
-- **Default branch is `master`**. Unless the user explicitly asks to work on a separate branch, make changes on `master`, commit on `master`, and push `origin master`.
-- Before starting GitHub-visible work, run `git status --short --branch` and `git ls-remote --symref origin HEAD refs/heads/master` to verify the local branch and the remote default branch.
-- Do not assume the current checkout is the branch the GitHub homepage displays. The plain repository URL shows the remote default branch (`origin/HEAD`), not necessarily `master`.
-- After pushing, verify the remote with `git ls-remote origin refs/heads/master` and confirm it matches the local commit. If the user asked for the plain GitHub repo URL to update, verify `origin/HEAD` points to `master` as well.
-- Only push or update a non-`master` branch when the user explicitly asks for branch work. If branch work is requested, name the branch in the final response and do not claim the GitHub homepage is updated unless that branch is the default or has been merged.
+- Default branch is `master`.
+- Before GitHub-visible work, run `git status --short --branch` and `git ls-remote --symref origin HEAD refs/heads/master`.
+- After pushing, verify the remote with `git ls-remote origin refs/heads/master`.
+- Only push or update a non-`master` branch when the user explicitly asks for branch work.
 
-## Common Tasks for Agents
+## Common Tasks
 
-### Adding a new message type handler
-1. Add a callback registration in `RemoteController.__init__()`: `cb.register_callback('msg_<type>', self._on_<type>)`
-2. Add the handler method: `def _on_<type>(self, **kwargs)`
-3. If it needs local execution, add a method to `LocalMachine`
+### Adding A Modern Message Handler
 
-### Adding a new gesture
-1. Add a handler function in `orca-customizations.py` with signature `(script=None, inputEvent=None)`
-2. Add a tuple to the `gesture_bindings` list in `_register_gestures()`
-3. Verify the keybinding doesn't conflict with Orca's official shortcuts (check both desktop and laptop layouts)
-4. Update README.md gesture table and install script output
+1. Add or confirm a message constant in `protocol.py`.
+2. Handle it in `RemoteExtension._on_message()`.
+3. Marshal to GLib with `GLib.idle_add()` if it touches Orca, GTK, AT-SPI, or clipboard state.
+4. Add focused tests where the logic is pure enough to isolate.
 
-### Changing connection parameters at runtime
-Use `transport.reconnect(address=(host, port), channel=key, connection_type="master"|"slave")`. This closes the existing connection and starts a new `ConnectorThread`.
+### Adding A Modern Shortcut
+
+1. Add a `KeyboardCommand` in `RemoteExtension._get_commands()`.
+2. If it must stay local while forwarding, update `_OWN_CTRL_CHORD_KEYSYMS` or `_OWN_ALT_CHORD_KEYSYMS`.
+3. Update `tests/test_bypass_chords.py`.
+4. Update README.md.
+
+### Adding A Legacy Message Handler
+
+1. Add a callback registration in `RemoteController.__init__()`: `cb.register_callback('msg_<type>', self._on_<type>)`.
+2. Add `def _on_<type>(self, **kwargs)`.
+3. If it needs local execution, add a method to `LocalMachine`.
 
 ## External References
 
-- [NVDA Remote protocol](https://github.com/NVDARemote/NVDARemote) — the protocol this plugin implements
-- [GNOME Orca source](https://gitlab.gnome.org/GNOME/orca) — the screen reader this plugin extends
-- [Orca keybindings reference](https://help.gnome.org/users/orca/stable/commands.html.en) — official shortcut list
-- NVDA Remote default relay port: **6837**
-- NVDA Remote protocol version: **2**
+- NVDA Remote protocol: https://github.com/NVDARemote/NVDARemote
+- GNOME Orca source: https://gitlab.gnome.org/GNOME/orca
+- Orca keybindings reference: https://help.gnome.org/users/orca/stable/commands.html.en
+- NVDA Remote default relay port: `6837`
+- NVDA Remote protocol version: `2`

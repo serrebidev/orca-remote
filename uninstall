@@ -3,13 +3,40 @@
 from glob import glob
 import os
 
-orca_folder = os.path.expanduser("~/.local/share/orca")
 
-os.remove("%s/orca-customizations.py" % orca_folder)
+def remove_if_exists(path):
+    try:
+        os.remove(path)
+        return True
+    except FileNotFoundError:
+        return False
 
-os.rename("%s/orca-customizations-backup.py" % orca_folder, "%s/orca-customizations.py" % orca_folder)
 
-for file in glob("orca-scripts/*.py"):
-    os.remove("%s/%s" % (orca_folder, file))
+def main():
+    orca_folder = os.path.expanduser("~/.local/share/orca")
+    customizations_path = os.path.join(orca_folder, "orca-customizations.py")
+    backup_path = os.path.join(orca_folder, "orca-customizations-backup.py")
 
-print("Uninstallation complete.")
+    removed_customizations = remove_if_exists(customizations_path)
+
+    if os.path.exists(backup_path):
+        os.rename(backup_path, customizations_path)
+        print("Restored previous orca-customizations.py backup.")
+    elif removed_customizations:
+        print("Removed legacy Orca Remote customizations.")
+    else:
+        print("No legacy Orca Remote customizations were installed.")
+
+    removed_count = 0
+    for file in glob("orca-scripts/*.py"):
+        installed_path = os.path.join(orca_folder, file)
+        if remove_if_exists(installed_path):
+            removed_count += 1
+
+    print("Removed %d legacy support file(s)." % removed_count)
+    print("Legacy uninstallation complete.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
