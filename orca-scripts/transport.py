@@ -30,7 +30,7 @@ class Transport:
 class TCPTransport(Transport):
 	buffer: bytes
 	closed: bool
-	
+
 	def __init__(self, serializer, address, timeout=0):
 		super().__init__(serializer=serializer)
 		self.closed = False
