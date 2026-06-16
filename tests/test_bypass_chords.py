@@ -405,3 +405,69 @@ class TestOwnChordRefusalPredicate:
             0xffe3,  # Control_L
         }
         assert not instance._chord_matches_own_command(0x63)
+
+
+class TestMasterGrab:
+    """Master-mode grabs prefer Orca's own AT-SPI device."""
+
+    def test_enable_uses_orca_device_when_available(self):
+        mod = _load_remote_module()
+        instance = mod.RemoteExtension.__new__(mod.RemoteExtension)
+        instance._master_grab_ids = None
+        instance._master_grab = None
+        instance._log = mock.Mock()
+        mod.forwardable_keysyms = lambda: frozenset({0xff09, 0xfe20})
+
+        class FakeKeyDefinition:
+            pass
+
+        class FakeManager:
+            def __init__(self):
+                self.added = []
+
+            def is_active(self):
+                return True
+
+            def add_key_grab(self, key_definition):
+                self.added.append(
+                    (key_definition.keysym, key_definition.modifiers),
+                )
+                return len(self.added)
+
+        manager = FakeManager()
+        sys.modules["orca"].ax_device_manager = types.SimpleNamespace(
+            get_manager=lambda: manager,
+        )
+        atspi = types.SimpleNamespace(KeyDefinition=FakeKeyDefinition)
+        sys.modules["gi.repository"].Atspi = atspi
+
+        instance._enable_master_grab()
+
+        expected_count = 2 * len(mod._MASTER_GRAB_MODIFIERS)
+        assert len(instance._master_grab_ids) == expected_count
+        assert len(manager.added) == expected_count
+        assert instance._master_grab is None
+
+    def test_disable_releases_orca_device_grabs(self):
+        mod = _load_remote_module()
+        instance = mod.RemoteExtension.__new__(mod.RemoteExtension)
+        instance._master_grab_ids = [11, 12]
+        instance._master_grab = None
+        instance._log = mock.Mock()
+
+        class FakeManager:
+            def __init__(self):
+                self.removed = []
+
+            def remove_key_grab(self, grab_id):
+                self.removed.append(grab_id)
+
+        manager = FakeManager()
+        sys.modules["orca"].ax_device_manager = types.SimpleNamespace(
+            get_manager=lambda: manager,
+        )
+
+        instance._disable_master_grab()
+
+        assert manager.removed == [11, 12]
+        assert instance._master_grab_ids is None

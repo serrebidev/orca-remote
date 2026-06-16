@@ -261,6 +261,19 @@ class TestForwardableKeysyms:
             assert keymap.keysym_to_vk(keysym)[0] != 0
 
 
+class TestKeysymAliases:
+    """Reverse-only aliases for keysyms delivered by X/AT-SPI."""
+
+    def test_iso_left_tab_maps_to_vk_tab(self) -> None:
+        assert keymap.keysym_to_vk(0xfe20) == (0x09, False)
+
+    def test_iso_left_tab_is_forwardable(self) -> None:
+        assert 0xfe20 in keymap.forwardable_keysyms()
+
+    def test_alias_does_not_pollute_forward_table(self) -> None:
+        assert keymap.vk_to_keysym(0x09) == 0xff09
+
+
 class TestRoundTrip:
     def test_forward_reverse_round_trip_sample(self) -> None:
         # For every VK in the forward table, reverse-lookup of the

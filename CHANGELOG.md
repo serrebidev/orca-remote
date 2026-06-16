@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Forward Shift+Tab from the client side by mapping `XK_ISO_Left_Tab`
+  back to `VK_TAB` and including it in the forwardable keysym grab set.
+- Prefer Orca's own AT-SPI device for master-mode key grabs, with the
+  existing vendored grab as fallback, so forwarded keys are less likely
+  to leak into the focused local app.
+- Announce `client_joined` and `nvda_not_connected` protocol messages
+  instead of logging them as unhandled, while suppressing repeated
+  "peer not connected" announcements until the peer state changes.
+
 ## 0.9.0 -- 2026-05-24
 
 Modern extension packaging landed in this repository alongside the

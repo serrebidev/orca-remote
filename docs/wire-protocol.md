@@ -42,7 +42,7 @@ self-hosted v2 relays both work.
 | `type`              | Handled in role | Action |
 |---------------------|-----------------|--------|
 | `channel_joined`    | both            | First per session: speak "connected" / "connected in host mode". Subsequent (auto-reconnect): silent. |
-| `client_joined`     | both            | (Currently ignored; future: speak "peer joined".) |
+| `client_joined`     | both            | Speak "peer joined." |
 | `client_left`       | both            | Speak "peer left." |
 | `motd`              | both            | Log at debug level. |
 | `speak`             | client only     | Coalesce non-string sequence items, extract text, speak via `controller.present_message_internal`. Gated on `focus_on_remote AND NOT inbound_speech_muted`. |
@@ -52,7 +52,7 @@ self-hosted v2 relays both work.
 | `set_clipboard_text`| both            | `controller.set_clipboard_text`; brief spoken "peer pushed clipboard (N chars)" cue (length only — could be a password). |
 | `set_braille_info`  | both            | Track peer's `numCells` in `_peer_braille_cells` for informational use. |
 | `display`           | client only     | Render incoming cells as Unicode braille block characters (U+2800 + cell_byte) via `controller.display_braille_text`. Same gating as `speak` (`focus_on_remote AND NOT inbound_speech_muted`). Shipped 0.6.1. |
-| `nvda_not_connected`| both            | Constant defined, no current handler. |
+| `nvda_not_connected`| both            | Speak "peer is not connected" once until a peer joins or the session intent resets. |
 
 Anything not in the table is logged as "unhandled message type: ..."
 and dropped.

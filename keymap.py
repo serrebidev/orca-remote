@@ -183,6 +183,15 @@ def vk_to_keysym(vk_code: int, extended: bool = False) -> int:
     return _VK_TO_KEYSYM.get(vk_code, 0)
 
 
+# Inbound-only keysym aliases: X11 keysyms that do not appear in the
+# forward VK table but can be delivered by AT-SPI. Shift+Tab is the
+# important case: X11 reports XK_ISO_Left_Tab, while Shift itself is
+# forwarded as its own key frame.
+_KEYSYM_ALIASES: dict[int, tuple[int, bool]] = {
+    0xfe20: (0x09, False),  # XK_ISO_Left_Tab -> VK_TAB
+}
+
+
 # Reverse: X11 keysym -> (vk_code, extended_flag). Built once at
 # module init from the forward tables. Extended-flag bias: if a
 # keysym appears in _EXTENDED_OVERRIDES (e.g. XK_Page_Up for main-
@@ -209,6 +218,7 @@ def _build_reverse_table() -> dict[int, tuple[int, bool]]:
     for vk, keysym in _EXTENDED_OVERRIDES.items():
         if keysym != 0:
             table[keysym] = (vk, True)
+    table.update(_KEYSYM_ALIASES)
     return table
 
 

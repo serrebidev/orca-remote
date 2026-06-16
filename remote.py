@@ -138,6 +138,20 @@ _AT_SPI_MOD_CTRL: int = 0x04
 _AT_SPI_MOD_SHIFT: int = 0x01
 _AT_SPI_MOD_ALT: int = 0x08
 
+# Modifier-mask combinations used for master-mode grabs on Orca's own
+# AT-SPI device. Plain 0x00 is required for unmodified arrows and Tab.
+_MASTER_GRAB_MODIFIERS: tuple[int, ...] = (
+    0x00,
+    0x01,                 # Shift
+    0x04,                 # Ctrl
+    0x08,                 # Alt
+    0x40,                 # Super
+    0x01 | 0x04,          # Shift+Ctrl
+    0x01 | 0x08,          # Shift+Alt
+    0x04 | 0x08,          # Ctrl+Alt
+    0x01 | 0x04 | 0x08,   # Shift+Ctrl+Alt
+)
+
 
 def _settings_path() -> str:
     """Absolute path to the JSON settings file."""
@@ -202,6 +216,10 @@ class RemoteExtension(Extension):
         # 30s (the backoff cap), which is what the VM crash session
         # heard as "repeating things over and over."
         self._announced_join: bool = False
+        # Relay-side "peer not connected" status can repeat while the
+        # channel is empty. Announce it once until a peer joins or the
+        # user starts a fresh connection intent.
+        self._peer_not_connected_announced: bool = False
         # Host-side de-duplication of consecutive identical speech.
         # Orca emits the same string twice in rapid succession in a
         # few legitimate code paths (caret-moved + name-changed,
@@ -235,15 +253,10 @@ class RemoteExtension(Extension):
         # unreachable on marco/wayland-flagged sessions, and present()
         # doesn't reliably re-raise. Destroy-rebuild is predictable.
         self._settings_dialog: Any = None
-        # KeysetGrab active while master-mode forwarding is on. When
-        # set, the forwardable-keysym set is grabbed at the AT-SPI
-        # level so the focused local app stops receiving keys we're
-        # already sending on the wire. None when not forwarding or
-        # when the grab is unavailable (vendored ext-utils missing,
-        # AT-SPI couldn't construct a Device, compositor refused).
-        # See vendor/orca_ext_utils/keyboard_grab.py for the grab
-        # semantics. Decision rationale in docs/architecture.md
-        # "Master-side full consume."
+        # Master-mode grab state, active while focused-on-remote.
+        # Prefer Orca's own AT-SPI device because those grabs consume
+        # reliably on X11; fallback to vendored KeysetGrab.
+        self._master_grab_ids: "list[int] | None" = None
         self._master_grab: "KeysetGrab | None" = None
         super().__init__()
 
@@ -313,6 +326,7 @@ class RemoteExtension(Extension):
             )
             self._dropped_nonstring_items = 0
         self._announced_join = False
+        self._peer_not_connected_announced = False
         self._last_outbound_speech = ""
         self._last_outbound_braille = ("", -2)
         self._sent_braille_info = False
@@ -674,6 +688,7 @@ class RemoteExtension(Extension):
             return True
         # User asked to connect -- they should hear the next join.
         self._announced_join = False
+        self._peer_not_connected_announced = False
         self._say("Orca Remote: connecting.")
         self._restart_transport()
         return True
@@ -684,6 +699,7 @@ class RemoteExtension(Extension):
         self._set_auto_connect(False)
         # Whatever happens next, the next join should announce again.
         self._announced_join = False
+        self._peer_not_connected_announced = False
         if self._transport is None:
             self._say("Orca Remote already disconnected.")
             return True
@@ -752,21 +768,17 @@ class RemoteExtension(Extension):
         return True
 
     def _enable_master_grab(self) -> None:
-        """Take ownership of forwardable keys at the AT-SPI level.
+        """Take ownership of forwardable keys at the AT-SPI level."""
 
-        No-op when KeysetGrab isn't available (vendored ext-utils
-        missing) or when a grab is already in place. Logs how many
-        of the requested keysym/modifier pairs the AT-SPI device
-        accepted vs refused; partial coverage is normal under
-        compositors that don't honor every grab.
-        """
-
-        if self._master_grab is not None:
+        if self._master_grab_ids is not None or self._master_grab is not None:
+            return
+        if self._enable_master_grab_via_orca():
             return
         if not _HAVE_KEYSET_GRAB or KeysetGrab is None:
             self._log(
-                "KeysetGrab unavailable (vendored ext-utils missing); "
-                "forwarded keys will also reach the focused local app"
+                "no AT-SPI grab available (orca device unreachable and "
+                "vendored ext-utils missing); forwarded keys will also "
+                "reach the focused local app"
             )
             return
         keysyms = forwardable_keysyms()
@@ -787,7 +799,10 @@ class RemoteExtension(Extension):
         self._master_grab = grab
         held = len(keysyms) * len(grab._modifier_combos) - len(grab.failed_keysyms)
         refused = len(grab.failed_keysyms)
-        self._log(f"master grab active: {held} grabs held, {refused} refused")
+        self._log(
+            f"master grab active (fallback KeysetGrab): {held} held, "
+            f"{refused} refused"
+        )
         # Partial coverage is common on Wayland compositors that don't
         # fully honor AT-SPI key grabs. The refused count goes to the
         # log but NOT to speech -- speaking it on every switch_side
@@ -795,16 +810,80 @@ class RemoteExtension(Extension):
         # depending on transient grab-table state, which is confusing).
         # Users who want to know their coverage can grep the log.
 
-    def _disable_master_grab(self) -> None:
-        """Release the master-mode KeysetGrab if one is held."""
+    def _enable_master_grab_via_orca(self) -> bool:
+        """Grab forwardable keysyms on Orca's own AT-SPI device."""
 
-        if self._master_grab is None:
-            return
         try:
-            self._master_grab.release()
+            from orca import ax_device_manager  # pylint: disable=import-outside-toplevel
+            import gi  # pylint: disable=import-outside-toplevel
+            gi.require_version("Atspi", "2.0")
+            from gi.repository import Atspi  # pylint: disable=import-outside-toplevel
         except Exception as error:  # pylint: disable=broad-except
-            self._log(f"KeysetGrab.release raised: {error}")
-        self._master_grab = None
+            self._log(f"orca-device grab unavailable: {error}")
+            return False
+
+        try:
+            manager = ax_device_manager.get_manager()
+        except Exception as error:  # pylint: disable=broad-except
+            self._log(f"orca-device grab: get_manager failed: {error}")
+            return False
+        try:
+            active = bool(manager is not None and manager.is_active())
+        except Exception as error:  # pylint: disable=broad-except
+            self._log(f"orca-device grab: is_active failed: {error}")
+            return False
+        if not active:
+            self._log("orca-device grab: device manager not active")
+            return False
+
+        grab_ids: list[int] = []
+        refused = 0
+        for keysym in forwardable_keysyms():
+            for modifier in _MASTER_GRAB_MODIFIERS:
+                kd = Atspi.KeyDefinition()
+                kd.keysym = keysym
+                kd.modifiers = modifier
+                kd.keycode = 0
+                try:
+                    grab_id = manager.add_key_grab(kd)
+                except Exception:  # pylint: disable=broad-except
+                    grab_id = 0
+                if grab_id:
+                    grab_ids.append(grab_id)
+                else:
+                    refused += 1
+        if not grab_ids:
+            self._log("orca-device grab: no grabs accepted; falling back")
+            return False
+        self._master_grab_ids = grab_ids
+        self._log(
+            f"master grab active (orca device): {len(grab_ids)} held, "
+            f"{refused} refused"
+        )
+        return True
+
+    def _disable_master_grab(self) -> None:
+        """Release the master-mode grab if one is held."""
+
+        if self._master_grab_ids is not None:
+            try:
+                from orca import ax_device_manager  # pylint: disable=import-outside-toplevel
+                manager = ax_device_manager.get_manager()
+                for grab_id in self._master_grab_ids:
+                    try:
+                        manager.remove_key_grab(grab_id)
+                    except Exception:  # pylint: disable=broad-except
+                        pass
+            except Exception as error:  # pylint: disable=broad-except
+                self._log(f"orca-device grab release failed: {error}")
+            self._master_grab_ids = None
+
+        if self._master_grab is not None:
+            try:
+                self._master_grab.release()
+            except Exception as error:  # pylint: disable=broad-except
+                self._log(f"KeysetGrab.release raised: {error}")
+            self._master_grab = None
 
     def open_settings(self) -> bool:
         """Show the settings dialog. Bound to Insert+Ctrl+R.
@@ -852,6 +931,7 @@ class RemoteExtension(Extension):
                 # Settings change -> connect-affecting restart; the
                 # user deserves to hear the new join announce.
                 self._announced_join = False
+                self._peer_not_connected_announced = False
                 self._restart_transport()
 
     def _get_setting(self, key: str) -> Any:
@@ -871,6 +951,7 @@ class RemoteExtension(Extension):
         ):
             if not self._disabled:
                 self._announced_join = False
+                self._peer_not_connected_announced = False
                 self._restart_transport()
 
     # ---- settings persistence -------------------------------------
@@ -1052,13 +1133,22 @@ class RemoteExtension(Extension):
             if self._announced_join:
                 return
             self._announced_join = True
+            self._peer_not_connected_announced = False
             role = self._current_role()
             if role == ROLE_HOST:
                 self._say_async("Orca Remote connected in host mode.")
             else:
                 self._say_async("Orca Remote connected.")
+        elif msg_type == protocol.MSG_CLIENT_JOINED:
+            self._peer_not_connected_announced = False
+            self._say_async("Orca Remote: peer joined.")
         elif msg_type == protocol.MSG_CLIENT_LEFT:
+            self._peer_not_connected_announced = False
             self._say_async("Orca Remote: peer left.")
+        elif msg_type == protocol.MSG_NVDA_NOT_CONNECTED:
+            if not self._peer_not_connected_announced:
+                self._peer_not_connected_announced = True
+                self._say_async("Orca Remote: peer is not connected.")
         elif msg_type == protocol.MSG_MOTD:
             motd = str(message.get("motd", "")).strip()
             if motd:
