@@ -17,6 +17,9 @@ The modern install path is an Orca user extension (`.orca-ext`). The older `orca
 - SHA-256 relay certificate fingerprint pinning.
 - Reconnect backoff and write-buffer protection.
 
+File transfer is not implemented. Use clipboard sync for text, or a
+separate file-transfer tool for files.
+
 ## Requirements
 
 - Orca with the user-extension API. The extension manifest targets Orca `51.alpha`.
@@ -32,6 +35,8 @@ Some features depend on newer Orca controller hooks:
 - `subscribe_keyboard_event` and `synthesize_key_event` for modern key forwarding and injection.
 
 The extension degrades gracefully when a hook is missing, but the related feature will not be available.
+For the complete modern feature set, use an Orca build that provides all
+of the hooks listed above.
 
 ## Install
 
@@ -66,6 +71,16 @@ Paste that value into **Server fingerprint (SHA-256)** in Orca Remote settings.
 **Client** means this Orca machine controls or listens to the remote machine. In this role, Orca receives remote speech and braille, forwards local keystrokes while focused on the remote, and can push clipboard text.
 
 **Host** means this Orca machine is controlled by a remote peer. In this role, Orca broadcasts local speech and braille, accepts remote key input, and receives clipboard text.
+
+## Pairing
+
+Common pairings are:
+
+- Orca client to Orca host for Linux-to-Linux remote control.
+- Orca client to an NVDA Remote host for controlling a Windows machine.
+- NVDA Remote client to Orca host for letting a Windows user control this machine.
+
+Both peers must use the same relay, channel key, and NVDA Remote v2-compatible protocol.
 
 ## Shortcuts
 
@@ -118,6 +133,10 @@ Run pure-function tests:
 ```bash
 python3 -m pytest tests/
 ```
+
+For a live host-side key-injection smoke test, `tests/fake_master.py`
+can join the same relay/channel as an NVDA Remote-style master and send
+a scripted key sequence to a running host session.
 
 Build the extension archive:
 

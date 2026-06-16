@@ -3,9 +3,19 @@
 
 # Python bytecode
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*.egg-info/
+
+.pytest_cache/
+.mypy_cache/
+
+# Editor leftovers
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
 
 # Test/build output
-.pytest_cache/
+/tmp-*
 remote.orca-ext

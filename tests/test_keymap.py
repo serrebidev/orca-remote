@@ -270,6 +270,9 @@ class TestKeysymAliases:
     def test_iso_left_tab_is_forwardable(self) -> None:
         assert 0xfe20 in keymap.forwardable_keysyms()
 
+    def test_plain_tab_still_maps(self) -> None:
+        assert keymap.keysym_to_vk(0xff09) == (0x09, False)
+
     def test_alias_does_not_pollute_forward_table(self) -> None:
         assert keymap.vk_to_keysym(0x09) == 0xff09
 
