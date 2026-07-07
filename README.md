@@ -162,7 +162,7 @@ Report bugs and request features in [Issues](https://github.com/serrebidev/orca-
 
 ## Credits
 
-Some functions in Orca Remote come from the original [orca-remote by churst90](https://github.com/churst90/orca-remote). Thanks to that project for the groundwork this build extends.
+A few functions originate from [orca-remote by churst90](https://github.com/churst90/orca-remote), which helped this package support both the modern Orca extension and the legacy plugin.
 
 ## License
 
