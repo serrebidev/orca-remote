@@ -4,7 +4,7 @@ A screen-reader-friendly extension that lets Orca on Linux control, and be contr
 
 [![Join SerrebiProjects on Telegram](https://img.shields.io/badge/Telegram-SerrebiProjects-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/SerrebiProjects)
 
-**Have a question, hit a bug, or want early word on new releases?** Join the [SerrebiProjects Telegram group](https://t.me/SerrebiProjects) — the community hub for Orca Remote and my other projects, and the fastest place to get help.
+**Questions, bugs, or release news?** Join the [SerrebiProjects Telegram group](https://t.me/SerrebiProjects), the fastest place to get help.
 
 Orca Remote can act as a **client** that controls and listens to a remote machine, or as a **host** that broadcasts Orca speech and braille while accepting remote key input. The modern install path is an Orca user extension (`.orca-ext`); a legacy `orca-customizations.py` installer is still included for older Orca builds.
 
