@@ -1,0 +1,53 @@
+name: Cloud Release
+
+# Cloud release pipeline. dry_run=true (default) builds everything and uploads
+# the artifact, publishing nothing. dry_run=false builds and publishes a
+# GitHub release.
+#   gh workflow run cloud-release.yml -f dry_run=true
+#   gh workflow run cloud-release.yml -f dry_run=false
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build only; publish nothing'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build extension
+        run: ./build-orca-ext.sh .
+      - name: Read version
+        id: version
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import re
+          src = open('manifest.toml').read()
+          m = re.search(r'^version\s*=\s*"(.+?)"', src, re.M)
+          print('version=' + m.group(1))
+          PY
+      - name: Upload artifact (dry run)
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ext-${{ steps.version.outputs.version }}
+          path: |
+            *.orca-ext
+
+      - name: Publish release
+        if: ${{ !inputs.dry_run }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          files: |
+            *.orca-ext
+
