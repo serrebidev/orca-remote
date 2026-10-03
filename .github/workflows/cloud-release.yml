@@ -22,7 +22,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build extension
         run: ./build-orca-ext.sh .
       - name: Read version
@@ -36,7 +36,7 @@ jobs:
           PY
       - name: Upload artifact (dry run)
         if: ${{ inputs.dry_run }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ext-${{ steps.version.outputs.version }}
           path: |
