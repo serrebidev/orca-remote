@@ -191,3 +191,41 @@ class TestRemoteTransportSend:
             on_message=_noop_message,
         )
         assert remote._expected_fp == "aabbcc"
+
+
+class ResettingReader:
+    async def readline(self) -> bytes:
+        raise ConnectionResetError("reset by peer")
+
+
+class TestRemoteTransportConnection:
+    def test_reset_connection_drops_the_dead_writer(self, monkeypatch):
+        transport_mod = _load_transport_module()
+        der = b"relay certificate"
+        writer = FakeWriter()
+        writer.get_extra_info = FakeFingerprintWriter(FakeSSLObject(der)).get_extra_info
+
+        async def fake_open_connection(*_args, **_kwargs):
+            return ResettingReader(), writer
+
+        monkeypatch.setattr(transport_mod.asyncio, "open_connection", fake_open_connection)
+        remote = transport_mod.RemoteTransport(
+            host="example.invalid",
+            port=6837,
+            channel="key",
+            fingerprint=hashlib.sha256(der).hexdigest(),
+            connection_type="master",
+            on_message=_noop_message,
+        )
+
+        async def run_once():
+            remote._stop_event = asyncio.Event()
+            try:
+                await remote._connect_and_read()
+            except ConnectionResetError:
+                pass
+
+        asyncio.run(run_once())
+
+        assert remote._writer is None
+        assert writer.closed is True

@@ -4,6 +4,12 @@
 
 ### Fixed
 
+- Drop the dead connection when the relay resets it or sends an
+  oversized frame. The transport kept writing into the broken stream
+  and left its socket open until the next successful connect.
+- The legacy `orca-scripts` transport now closes its socket and stops
+  its sender thread after a dropped connection; before, every
+  reconnect leaked both.
 - Forward Shift+Tab from the client side by mapping `XK_ISO_Left_Tab`
   back to `VK_TAB` and including it in the forwardable keysym grab set.
   Plain Tab remains mapped to `VK_TAB`; Shift travels as its own key

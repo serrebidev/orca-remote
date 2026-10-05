@@ -260,37 +260,42 @@ class RemoteTransport:
             raise FingerprintMismatch(expected=self._expected_fp, actual=actual_fp)
 
         self._writer = writer
-        self._on_status("connected; joining channel")
-
-        # Handshake: announce protocol version, then join the channel
-        # in whichever role the caller configured (master = receive
-        # speech from the remote slave; slave = broadcast our speech).
-        writer.write(protocol.encode(protocol.build_protocol_version()))
-        writer.write(protocol.encode(
-            protocol.build_join(self._channel, self._connection_type)
-        ))
-        await writer.drain()
-
-        # Read loop. Each iteration consumes exactly one
-        # newline-terminated JSON object.
-        while not self._stop_event.is_set():  # type: ignore[union-attr]
-            line = await reader.readline()
-            if not line:
-                self._on_status("connection closed by peer")
-                break
-            try:
-                message = protocol.decode(line)
-            except protocol.ProtocolError as error:
-                self._on_status(f"dropped malformed frame: {error}")
-                continue
-            try:
-                await self._on_message(message)
-            except Exception as error:  # pylint: disable=broad-except
-                self._on_status(f"handler raised: {error}")
-
-        self._writer = None
         try:
-            writer.close()
-            await writer.wait_closed()
-        except Exception:  # pylint: disable=broad-except
-            pass
+            self._on_status("connected; joining channel")
+
+            # Handshake: announce protocol version, then join the channel
+            # in whichever role the caller configured (master = receive
+            # speech from the remote slave; slave = broadcast our speech).
+            writer.write(protocol.encode(protocol.build_protocol_version()))
+            writer.write(protocol.encode(
+                protocol.build_join(self._channel, self._connection_type)
+            ))
+            await writer.drain()
+
+            # Read loop. Each iteration consumes exactly one
+            # newline-terminated JSON object.
+            while not self._stop_event.is_set():  # type: ignore[union-attr]
+                line = await reader.readline()
+                if not line:
+                    self._on_status("connection closed by peer")
+                    break
+                try:
+                    message = protocol.decode(line)
+                except protocol.ProtocolError as error:
+                    self._on_status(f"dropped malformed frame: {error}")
+                    continue
+                try:
+                    await self._on_message(message)
+                except Exception as error:  # pylint: disable=broad-except
+                    self._on_status(f"handler raised: {error}")
+        finally:
+            # A reset connection or an oversized line raises out of the
+            # loop; drop the dead writer either way so send() stops
+            # writing into it and the socket is closed before reconnecting.
+            if self._writer is writer:
+                self._writer = None
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:  # pylint: disable=broad-except
+                pass
