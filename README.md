@@ -138,6 +138,12 @@ Paste that value into **Server fingerprint (SHA-256)** in Orca Remote settings. 
 
 **Host** means this Orca machine is controlled by a remote peer. In this role, Orca broadcasts local speech and braille, accepts remote key input, and receives clipboard text.
 
+## Windows NVDA controlling Linux with braille
+
+For a step-by-step, keyboard-friendly walkthrough covering **NVDA Remote Access on Windows as controller**, **Orca Remote on Linux as host**, and a **braille display connected to Windows**, see [Control Linux Orca from Windows NVDA Remote Access](docs/windows-nvda-linux-orca.md).
+
+**Braille compatibility varies by Orca and Orca Remote version.** A successful speech or keyboard connection does not prove remote braille works. The guide distinguishes the upstream release from a locally tested, not-yet-upstreamed Orca 51.2 braille patch and includes a physical test checklist.
+
 ## Pairing
 
 Common pairings are:
