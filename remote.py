@@ -555,6 +555,28 @@ class RemoteExtension(Extension):
         self._stop_loop_thread()
         super().disable()
 
+    def _localized_character_names(self) -> "dict[str, str] | None":
+        """This Orca's localized chnames table, or None when unavailable.
+
+        Cached after the first lookup (success or failure): the table
+        is static for the life of the Orca process.
+        """
+
+        cached = getattr(self, "_character_names_cache", None)
+        if cached is not None:
+            return cached or None
+        names: dict[str, str] = {}
+        try:
+            from orca import chnames  # pylint: disable=import-outside-toplevel
+
+            table = getattr(chnames, "chnames", None)
+            if isinstance(table, dict):
+                names = {k: v for k, v in table.items() if v}
+        except Exception:  # pylint: disable=broad-except
+            names = {}
+        self._character_names_cache = names
+        return names or None
+
     def _on_speech_emitted(self, text: str, voice_type: str, language: str) -> None:
         """Forward Orca's outbound speech to the remote master when in host mode.
 
@@ -570,6 +592,13 @@ class RemoteExtension(Extension):
             return
         if not text:
             return
+        # Issue #5: a lone character (character navigation, key echo)
+        # must go out as its spoken name -- NVDA is silent for a raw
+        # " " or lone punctuation. Localized via this Orca's own
+        # chnames table when it has one.
+        text = protocol.expand_single_character(
+            text, self._localized_character_names()
+        )
         # User toggle: when the menu mutes mirroring, hold the
         # transport open but stop emitting speak frames to the master.
         if not self._mirror_speech:

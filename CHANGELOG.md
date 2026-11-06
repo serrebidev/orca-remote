@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.12 -- 2026-11-06
+
+### Fixed
+
+- Issue #5 (reported by manuelcortez): single characters from an
+  Orca host no longer arrive silent on the NVDA controller.
+  Character navigation and key echo forward one raw character at a
+  time, and NVDA's speech queue says nothing for a lone space
+  (whitespace is stripped) or for lone punctuation such as `@` or
+  `-` at its default symbol level. The host now expands a lone
+  character to its spoken name before sending -- "space", "at",
+  "dash" -- using the host Orca's own localized chnames table when
+  available (so a Spanish host sends Spanish names), with a built-in
+  English table as fallback. Letters, digits, and longer utterances
+  are unchanged. Fixed in both the modern extension and the legacy
+  customizations install.
+
 ## 0.9.11 -- 2026-10-25
 
 ### Fixed

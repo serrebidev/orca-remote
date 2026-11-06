@@ -105,6 +105,74 @@ def build_join(channel: str, connection_type: str = CONNECTION_TYPE_MASTER) -> d
     }
 
 
+# Spoken names for single characters, mirroring Orca's chnames table
+# (the English source strings). Used as the fallback when the host's
+# localized chnames table is unavailable.
+CHARACTER_NAMES: dict[str, str] = {
+    " ": "space",
+    "\n": "newline",
+    "\t": "tab",
+    "!": "exclaim",
+    '"': "quote",
+    "#": "number",
+    "$": "dollar",
+    "%": "percent",
+    "&": "and",
+    "'": "apostrophe",
+    "(": "left paren",
+    ")": "right paren",
+    "*": "star",
+    "+": "plus",
+    ",": "comma",
+    "-": "dash",
+    ".": "dot",
+    "/": "slash",
+    ":": "colon",
+    ";": "semicolon",
+    "<": "less",
+    "=": "equals",
+    ">": "greater",
+    "?": "question",
+    "@": "at",
+    "[": "left bracket",
+    "\\": "backslash",
+    "]": "right bracket",
+    "^": "caret",
+    "_": "underline",
+    "`": "grave",
+    "{": "left brace",
+    "|": "vertical bar",
+    "}": "right brace",
+    "~": "tilde",
+    " ": "no break space",
+}
+
+
+def expand_single_character(
+    text: str, localized_names: dict[str, str] | None = None
+) -> str:
+    """Expand a lone character to its spoken name for an NVDA master.
+
+    Issue #5: character navigation and key echo on an Orca host forward
+    one raw character at a time. NVDA's speech queue is silent for a
+    lone ``" "`` (whitespace is stripped) and for lone punctuation at
+    its default symbol level, because NVDA's own character speech
+    expands characters to names before queueing them. Do the same on
+    the host: prefer *localized_names* (the host Orca's chnames table,
+    in the host's language), fall back to CHARACTER_NAMES. Letters,
+    digits, longer text, and characters with no known name pass
+    through unchanged -- NVDA speaks those raw without trouble.
+    """
+
+    if not isinstance(text, str) or len(text) != 1 or text.isalnum():
+        return text
+    if localized_names:
+        name = localized_names.get(text)
+        if name:
+            return name
+    return CHARACTER_NAMES.get(text, text)
+
+
 def build_ping() -> dict[str, Any]:
     """Build a ping message (used to reply to server pings if any)."""
 

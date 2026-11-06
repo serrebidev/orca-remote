@@ -219,6 +219,43 @@ old_speak = SpeechServer._speak
 old_speakCharacter = SpeechServer.speak_character
 old_stop = SpeechServer.stop
 
+# Spoken names for single characters (issue #5), mirroring Orca's
+# chnames table. NVDA is silent for a lone raw " " or punctuation
+# character forwarded as-is; its own character speech sends names.
+# ponytail: duplicated from protocol.py -- the legacy installer ships
+# this file standalone, with no package to import the shared helper
+# from. Keep the two tables in sync.
+_CHARACTER_NAMES = {
+    " ": "space", "\n": "newline", "\t": "tab",
+    "!": "exclaim", '"': "quote", "#": "number", "$": "dollar",
+    "%": "percent", "&": "and", "'": "apostrophe", "(": "left paren",
+    ")": "right paren", "*": "star", "+": "plus", ",": "comma",
+    "-": "dash", ".": "dot", "/": "slash", ":": "colon",
+    ";": "semicolon", "<": "less", "=": "equals", ">": "greater",
+    "?": "question", "@": "at", "[": "left bracket",
+    "\\": "backslash", "]": "right bracket", "^": "caret",
+    "_": "underline", "`": "grave", "{": "left brace",
+    "|": "vertical bar", "}": "right brace", "~": "tilde",
+    " ": "no break space",
+}
+
+def _expand_single_character(text):
+    """Expand a lone character to its spoken name for an NVDA master.
+
+    Prefer this Orca's localized chnames table (host's language);
+    fall back to _CHARACTER_NAMES. Anything else passes through.
+    """
+    if not isinstance(text, str) or len(text) != 1 or text.isalnum():
+        return text
+    try:
+        from orca import chnames
+        name = (getattr(chnames, "chnames", None) or {}).get(text)
+        if name:
+            return name
+    except Exception:
+        pass
+    return _CHARACTER_NAMES.get(text, text)
+
 def my_speak(self, text, acss, **kw):
     # Only forward Orca's own speech when acting as slave (being controlled).
     # In master mode we receive NVDA's speech; forwarding it back causes a loop.
@@ -227,7 +264,11 @@ def my_speak(self, text, acss, **kw):
         if _want_cancel:
             transport.send(type="cancel")
             _want_cancel = False
-        transport.send(type="speak", sequence=text)
+        expanded = _expand_single_character(text)
+        if expanded != text:
+            transport.send(type="speak", sequence=[expanded])
+        else:
+            transport.send(type="speak", sequence=text)
     return old_speak(self, text, acss, **kw)
 
 def my_speak_character(self, character, acss=None, *args, **kw):
@@ -236,7 +277,7 @@ def my_speak_character(self, character, acss=None, *args, **kw):
         if _want_cancel:
             transport.send(type="cancel")
             _want_cancel = False
-        transport.send(type="speak", sequence=[character])
+        transport.send(type="speak", sequence=[_expand_single_character(character)])
     return old_speakCharacter(self, character, acss, *args, **kw)
 
 def my_stop(self):
