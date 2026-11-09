@@ -38,4 +38,4 @@ class OrcaRemoteExtension(Extension):  # type: ignore[misc,valid-type]
     AUTHOR = "SerrebiDev and contributors"
     ORGANIZATION = ""
     COPYRIGHT = ""
-    WEBSITE = "https://github.com/serrebidev/orca-remote"
+    WEBSITE = "https://git.serrebiradio.com/serrebi/orca-remote"
