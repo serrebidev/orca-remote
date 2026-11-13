@@ -16,11 +16,30 @@
   refused the extension binding, so mute had no shortcut at all for
   laptop-layout users. While controlling a remote, Orca+Ctrl+M is now
   forwarded to the remote screen reader like any other command.
+- The bundled relay (`orca-scripts/local_server.py`) did each TLS
+  handshake on its accept loop with no time limit. One peer that
+  opened a connection and never spoke -- a port scanner is enough --
+  froze the relay for everyone: the port stayed open, but no later
+  client ever finished connecting. Handshakes now run on the
+  client's own thread with a 10-second deadline.
 - Test runs no longer write into the real
   `~/.local/share/orca/orca-remote-debug.log`.
 
 ### Added
 
+- Trust on first use. Leave the fingerprint blank and Orca Remote asks
+  "Trust this server?" on the first connection, then saves the
+  fingerprint; no more copying it from the clipboard or a file. A
+  server whose certificate changed gets a separate warning dialog
+  whose default button is "Stay disconnected". The old spoken
+  copy-and-paste instructions remain as a fallback if the dialog
+  cannot be shown.
+- Orca+Alt+S speaks the session status: whether Orca Remote is
+  connected (and if not, the last thing the connection did, such as
+  "reconnecting in 30s"), the server, the role, how many people can
+  control this machine or whether the remote machine is on the
+  channel, whether you are controlling the remote, and whether remote
+  speech is muted. The channel key is never spoken.
 - A test that reads the installed Orca's command definitions and fails
   if any Orca Remote shortcut collides with a built-in one.
 
