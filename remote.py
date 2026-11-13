@@ -1372,7 +1372,11 @@ class RemoteExtension(Extension):
                 self._say("Orca Remote settings saved.")
             if not self._disabled:
                 # Settings change -> connect-affecting restart; the
-                # user deserves to hear the new join announce.
+                # user deserves to hear the new join announce. Saving
+                # dials, so remember that intent too: otherwise a save
+                # made after Orca+Ctrl+Page Down leaves a live session
+                # that silently stays offline after the next Orca start.
+                self._set_auto_connect(True)
                 self._announced_join = False
                 self._peer_not_connected_announced = False
                 self._restart_transport()
@@ -1410,6 +1414,7 @@ class RemoteExtension(Extension):
             SETTING_FINGERPRINT, SETTING_ROLE,
         ):
             if not self._disabled:
+                self._set_auto_connect(True)
                 self._announced_join = False
                 self._peer_not_connected_announced = False
                 self._restart_transport()

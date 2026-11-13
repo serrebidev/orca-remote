@@ -228,3 +228,30 @@ def _FINGERPRINT_LEN(mod) -> int:
     """Number of 2-char groups in a valid pin, for building bad values."""
 
     return mod._FINGERPRINT_CHARS // 2
+
+
+class TestSettingsSaveRemembersConnect:
+    def test_save_after_disconnect_turns_auto_connect_back_on(self):
+        # Orca+Ctrl+Page Down clears auto_connect; a settings save then
+        # dials again. Without re-arming the flag the session is live
+        # now but stays offline after the next Orca start.
+        mod = _load_remote_module()
+        instance = _instance(mod)
+        instance._settings = {mod.SETTING_CHANNEL: "old", mod.SETTING_AUTO_CONNECT: False}
+        instance._settings_dialog = None
+
+        instance._on_settings_result({mod.SETTING_CHANNEL: "yoga"})
+
+        assert instance._settings[mod.SETTING_AUTO_CONNECT] is True
+        instance._restart_transport.assert_called_once()
+
+    def test_cancel_leaves_auto_connect_alone(self):
+        mod = _load_remote_module()
+        instance = _instance(mod)
+        instance._settings = {mod.SETTING_AUTO_CONNECT: False}
+        instance._settings_dialog = None
+
+        instance._on_settings_result(None)
+
+        assert instance._settings[mod.SETTING_AUTO_CONNECT] is False
+        instance._restart_transport.assert_not_called()
