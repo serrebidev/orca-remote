@@ -332,7 +332,7 @@ for status bar, etc.), is forwarded unchanged so the remote
 screen reader can act on it.
 
 **Known limitation**: a user binding an unrelated Orca extension
-to one of {Ctrl+r, Ctrl+m, Ctrl+PgUp, Ctrl+PgDn, Alt+Tab} with
+to one of {Ctrl+r, Ctrl+Shift+m, Ctrl+Shift+c, Ctrl+PgUp, Ctrl+PgDn, Alt+Tab} with
 Orca-mod would have their chord intercepted by our bypass and
 not forwarded -- the bypass logic can't distinguish "orca-remote
 owns this" from "someone else owns this." Resolvable later by

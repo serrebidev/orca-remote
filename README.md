@@ -161,7 +161,7 @@ Modern extension shortcuts:
 | Shortcut | Action |
 |---|---|
 | Orca + Ctrl + R | Open settings |
-| Orca + Ctrl + M | Client role: mute or unmute inbound speech and braille |
+| Orca + Ctrl + Shift + M | Client role: mute or unmute inbound speech and braille |
 | Orca + Ctrl + Page Up | Connect |
 | Orca + Ctrl + Page Down | Disconnect |
 | Ctrl + Shift + Orca + C | Push clipboard |

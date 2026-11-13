@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Orca+Ctrl+R opened the settings window behind the focused window on
+  KWin (focus-stealing prevention), so the shortcut seemed to do
+  nothing. The dialog is now presented with a timestamp, the way
+  Orca's own dialogs are, and opens focused every time.
+- Saving settings after Orca+Ctrl+Page Down reconnected but left
+  auto-connect off, so Orca came back offline after its next start.
+  Saving now records the connect intent.
+- Mute moved from Orca+Ctrl+M to **Orca+Ctrl+Shift+M**. In Orca's
+  laptop layout Orca+Ctrl+M is flat review "end of line", and Orca
+  refused the extension binding, so mute had no shortcut at all for
+  laptop-layout users. While controlling a remote, Orca+Ctrl+M is now
+  forwarded to the remote screen reader like any other command.
+- Test runs no longer write into the real
+  `~/.local/share/orca/orca-remote-debug.log`.
+
+### Added
+
+- A test that reads the installed Orca's command definitions and fails
+  if any Orca Remote shortcut collides with a built-in one.
+
 ## 0.9.12 -- 2026-11-06
 
 ### Fixed

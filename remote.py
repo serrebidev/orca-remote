@@ -191,7 +191,6 @@ _STICKY_KEYSYMS: frozenset[int] = frozenset({
 #      (the bypass list replaces the older single-key escape).
 _OWN_CTRL_CHORD_KEYSYMS: frozenset[int] = frozenset({
     0x72,    # XK_r          -> open_settings
-    0x6d,    # XK_m          -> mute_inbound_toggle
     0xff55,  # XK_Page_Up    -> connect
     0xff56,  # XK_Page_Down  -> disconnect_session
     0xff9a,  # XK_KP_Page_Up
@@ -200,6 +199,11 @@ _OWN_CTRL_CHORD_KEYSYMS: frozenset[int] = frozenset({
 _OWN_CTRL_SHIFT_CHORD_KEYSYMS: frozenset[int] = frozenset({
     0x63,    # XK_c          -> push_clipboard
     0x43,    # XK_C          -> push_clipboard on layouts reporting shifted keysyms
+    # Mute is Orca+Ctrl+Shift+M, not Orca+Ctrl+M: in the laptop layout
+    # Orca+Ctrl+M is flat review "end of line", and Orca refuses an
+    # extension binding that collides with a built-in one.
+    0x6d,    # XK_m          -> mute_inbound_toggle
+    0x4d,    # XK_M          -> mute_inbound_toggle (shifted keysym)
 })
 _OWN_ALT_CHORD_KEYSYMS: frozenset[int] = frozenset({
     0xff09,  # XK_Tab        -> switch_side
@@ -343,7 +347,7 @@ class RemoteExtension(Extension):
         # the user keep the connection up + the focus on remote (so
         # keystrokes still forward) while silencing the speech feed --
         # "stop hearing them move around while I work." Toggled by
-        # Insert+Ctrl+M.
+        # Orca+Ctrl+Shift+M.
         self._inbound_speech_muted: bool = False
         # Master-only: which Orca-modifier keys (Insert / Caps_Lock)
         # are currently held. A set, not a counter: holding Insert
@@ -793,7 +797,7 @@ class RemoteExtension(Extension):
         - Inactive unless role=client AND _focus_on_remote AND a
           live transport. Otherwise returns False (passthrough).
         - Bypass-chord list: when the user holds Orca-mod and presses
-          one of our own command chords (Insert+Ctrl+R / Ctrl+M /
+          one of our own command chords (Insert+Ctrl+R / Ctrl+Shift+M /
           Ctrl+PgUp / Ctrl+PgDn / Alt+Tab), return False so Orca
           dispatches the binding locally. The component modifier
           keystrokes (Insert, Ctrl, Alt) are STILL forwarded; only
@@ -886,7 +890,7 @@ class RemoteExtension(Extension):
         """True iff (Orca-mod held) + (modifier) + (keysym) names a local command.
 
         Master-side bypass for orca-remote's own keybindings. When
-        the user holds Insert and presses Ctrl+R / Ctrl+M / Ctrl+PgUp
+        the user holds Insert and presses Ctrl+R / Ctrl+Shift+M / Ctrl+PgUp
         / Ctrl+PgDn / Alt+Tab, we don't want to forward those to the
         remote -- they're local control commands and should fire
         Orca's binding for the registered handler instead.
@@ -997,7 +1001,7 @@ class RemoteExtension(Extension):
     # ---- command registration -------------------------------------
     #
     # Orca+Ctrl+R       open Orca Remote settings dialog
-    # Orca+Ctrl+M       toggle inbound speech mute (master-side)
+    # Orca+Ctrl+Shift+M toggle inbound speech mute (master-side)
     # Orca+Ctrl+PageUp  connect (no-op if already connected)
     # Orca+Ctrl+PageDn  disconnect (no-op if already disconnected)
     # Orca+Ctrl+Shift+C push local clipboard to the peer
@@ -1045,8 +1049,8 @@ class RemoteExtension(Extension):
                 self.mute_inbound_toggle,
                 self.GROUP_LABEL,
                 "Toggle Orca Remote inbound mute",
-                desktop_keybinding=keybindings.KeyBinding("m", ctrl),
-                laptop_keybinding=keybindings.KeyBinding("m", ctrl),
+                desktop_keybinding=keybindings.KeyBinding("m", ctrl_shift),
+                laptop_keybinding=keybindings.KeyBinding("m", ctrl_shift),
             ),
             KeyboardCommand(
                 "orcaRemoteConnectHandler",
@@ -1184,7 +1188,7 @@ class RemoteExtension(Extension):
         self._focus_on_remote = False
 
     def mute_inbound_toggle(self) -> bool:
-        """Toggle the master-side inbound-speech mute. Bound to Insert+Ctrl+M.
+        """Toggle the master-side inbound-speech mute. Bound to Orca+Ctrl+Shift+M.
 
         Independent of focus_on_remote: muting while focused-on-local
         is a no-op for hearing (we already weren't), but the flag
@@ -1592,7 +1596,7 @@ class RemoteExtension(Extension):
         if msg_type == protocol.MSG_SPEAK:
             # Only speak inbound utterances when we're a client, the
             # master is focused on the remote session, and the user
-            # hasn't muted the remote (Insert+Ctrl+M). Mute is
+            # hasn't muted the remote (Orca+Ctrl+Shift+M). Mute is
             # independent of focus so a muted state persists across
             # switch_side toggles -- coming back to remote stays quiet
             # until the user explicitly unmutes.

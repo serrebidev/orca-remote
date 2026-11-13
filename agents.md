@@ -142,7 +142,7 @@ Modern extension shortcuts:
 | Gesture | Handler |
 |---|---|
 | Orca+Ctrl+R | `open_settings` |
-| Orca+Ctrl+M | `mute_inbound_toggle` |
+| Orca+Ctrl+Shift+M | `mute_inbound_toggle` |
 | Orca+Ctrl+PageUp | `connect` |
 | Orca+Ctrl+PageDown | `disconnect_session` |
 | Ctrl+Shift+Orca+C | `push_clipboard` |

@@ -207,7 +207,7 @@ class TestBypassPredicate:
         mod = _load_remote_module()
         instance = mod.RemoteExtension.__new__(mod.RemoteExtension)
         instance._master_orca_mods_down = {0xff63}
-        for keysym in (0x72, 0x6d, 0xff55, 0xff56):  # r, m, PgUp, PgDn
+        for keysym in (0x72, 0xff55, 0xff56):  # r, PgUp, PgDn
             assert instance._is_local_bypass_chord(
                 keysym, mod._AT_SPI_MOD_CTRL,
             ), f"keysym 0x{keysym:x} should bypass under Orca+Ctrl"
@@ -250,18 +250,27 @@ class TestBypassPredicate:
         assert not instance._is_local_bypass_chord(0xff54, mod._AT_SPI_MOD_CTRL)
 
     def test_wrong_modifier_does_not_bypass(self):
-        """Insert+Ctrl+m (mute) only bypasses when Ctrl bit set.
+        """Orca+Ctrl+Shift+m (mute) only bypasses with Ctrl and Shift.
 
-        Insert+Alt+m (not a real command) should forward, not bypass.
+        Orca+Ctrl+m is flat review "end of line" in Orca's laptop
+        layout, so it must reach the remote screen reader; Orca+Alt+m
+        should forward too.
         """
 
         mod = _load_remote_module()
         instance = mod.RemoteExtension.__new__(mod.RemoteExtension)
         instance._master_orca_mods_down = {0xff63}
-        # Mute keysym 'm' is in OWN_CTRL_CHORD_KEYSYMS but the check
-        # requires Ctrl-bit. Without it, no bypass.
         assert not instance._is_local_bypass_chord(0x6d, 0)
         assert not instance._is_local_bypass_chord(0x6d, mod._AT_SPI_MOD_ALT)
+        assert not instance._is_local_bypass_chord(0x6d, mod._AT_SPI_MOD_CTRL)
+
+    def test_orca_mod_plus_ctrl_shift_m_bypasses(self):
+        mod = _load_remote_module()
+        instance = mod.RemoteExtension.__new__(mod.RemoteExtension)
+        instance._master_orca_mods_down = {0xffe5}  # Caps_Lock, laptop layout
+        modifiers = mod._AT_SPI_MOD_CTRL | mod._AT_SPI_MOD_SHIFT
+        assert instance._is_local_bypass_chord(0x6d, modifiers)
+        assert instance._is_local_bypass_chord(0x4d, modifiers)
 
     def test_clipboard_requires_shift(self):
         mod = _load_remote_module()
