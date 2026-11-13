@@ -24,6 +24,9 @@ log = getLogger('local_server')
 
 _DBG_LOG = os.path.expanduser("~/.local/share/orca/orca-remote-debug.log")
 
+# Seconds a new connection gets to finish the TLS handshake.
+HANDSHAKE_TIMEOUT = 10.0
+
 def _dbg(msg):
     try:
         with open(_DBG_LOG, "a") as f:
@@ -89,7 +92,7 @@ def _generate_cert_python(cert_path, key_path):
     subject = issuer = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, "orca-remote"),
     ])
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     cert = (
         x509.CertificateBuilder()
         .subject_name(subject)
@@ -312,28 +315,44 @@ class LocalRelayServer:
                 if self._running:
                     log.exception("accept() error")
                 break
-            try:
-                ssl_conn = ctx.wrap_socket(conn, server_side=True)
-            except Exception as exc:
-                log.warning("SSL handshake failed from %s: %s" % (addr, exc))
-                conn.close()
-                continue
-
-            with self._lock:
-                client_id = self._next_id
-                self._next_id += 1
-                client = _Client(ssl_conn, addr, client_id, self)
-                self._clients[client_id] = client
-            _dbg("new client %s from %s" % (client_id, addr))
-
-            t = threading.Thread(
-                target=client.handle,
-                name="orca_client_%d" % client_id,
+            # The TLS handshake runs on the client's own thread with a
+            # deadline. Done here on the accept loop, one peer that opens
+            # TCP and never sends a ClientHello (a port scanner, a dead
+            # NAT entry) blocked every later connection forever.
+            threading.Thread(
+                target=self._handshake_and_serve,
+                args=(ctx, conn, addr),
+                name="orca_handshake",
                 daemon=True,
-            )
-            t.start()
+            ).start()
 
         raw.close()
+
+    def _handshake_and_serve(self, ctx, conn, addr):
+        """TLS-wrap one accepted socket, then run its read loop."""
+        try:
+            conn.settimeout(HANDSHAKE_TIMEOUT)
+            ssl_conn = ctx.wrap_socket(conn, server_side=True)
+            ssl_conn.settimeout(None)
+        except Exception as exc:
+            log.warning("SSL handshake failed from %s: %s" % (addr, exc))
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return
+        if not self._running:
+            ssl_conn.close()
+            return
+
+        with self._lock:
+            client_id = self._next_id
+            self._next_id += 1
+            client = _Client(ssl_conn, addr, client_id, self)
+            self._clients[client_id] = client
+        _dbg("new client %s from %s" % (client_id, addr))
+        threading.current_thread().name = "orca_client_%d" % client_id
+        client.handle()
 
     def _add_to_channel(self, client, channel):
         """Add *client* to *channel*, return list of previously existing clients."""
