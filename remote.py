@@ -208,6 +208,8 @@ _OWN_CTRL_SHIFT_CHORD_KEYSYMS: frozenset[int] = frozenset({
 })
 _OWN_ALT_CHORD_KEYSYMS: frozenset[int] = frozenset({
     0xff09,  # XK_Tab        -> switch_side
+    0x73,    # XK_s          -> speak_status
+    0x53,    # XK_S          -> speak_status (shifted keysym)
 })
 
 # AT-SPI key-event modifier bit positions (standard X11 layout).
@@ -431,6 +433,13 @@ class RemoteExtension(Extension):
         # doesn't reliably re-raise. Destroy-rebuild is predictable.
         self._settings_dialog: Any = None
         self._trust_dialog: Any = None
+        # Other clients on our channel, id -> connection_type ("master"
+        # or "slave"), kept from channel_joined / client_joined /
+        # client_left for the spoken status. Written on the asyncio
+        # thread, read on GLib; whole-object swaps keep reads safe.
+        self._channel_peers: dict[int, str] = {}
+        # Latest transport status line ("reconnecting in 30s", ...).
+        self._last_transport_status: str = ""
         # (SpeechServer class, original speak_character, original
         # speak_key_event) while _hook_character_speech is active.
         self._char_speech_patch: "tuple[Any, Any, Any] | None" = None
@@ -1007,6 +1016,7 @@ class RemoteExtension(Extension):
     # Orca+Ctrl+PageUp  connect (no-op if already connected)
     # Orca+Ctrl+PageDn  disconnect (no-op if already disconnected)
     # Orca+Ctrl+Shift+C push local clipboard to the peer
+    # Orca+Alt+S        speak connection status
     # Orca+Alt+Tab      switch_side -- toggle focus_on_remote (grab +
     #                   hearing together)
     #
@@ -1077,6 +1087,14 @@ class RemoteExtension(Extension):
                 "Push Orca Remote clipboard",
                 desktop_keybinding=keybindings.KeyBinding("c", ctrl_shift),
                 laptop_keybinding=keybindings.KeyBinding("c", ctrl_shift),
+            ),
+            KeyboardCommand(
+                "orcaRemoteStatusHandler",
+                self.speak_status,
+                self.GROUP_LABEL,
+                "Speak Orca Remote connection status",
+                desktop_keybinding=keybindings.KeyBinding("s", alt),
+                laptop_keybinding=keybindings.KeyBinding("s", alt),
             ),
             KeyboardCommand(
                 "orcaRemoteSwitchSideHandler",
@@ -1188,6 +1206,90 @@ class RemoteExtension(Extension):
         self._release_forwarded_keys()
         self._disable_master_grab()
         self._focus_on_remote = False
+
+    def speak_status(self) -> bool:
+        """Speak the connection state. Bound to Orca+Alt+S."""
+
+        self._say(self._status_report())
+        return True
+
+    def _status_report(self) -> str:
+        """One spoken summary: connection, role, peers, focus, mute."""
+
+        host = str(self._settings.get(SETTING_HOST, "") or "")
+        port = int(self._settings.get(SETTING_PORT, 0) or 0)
+        channel = str(self._settings.get(SETTING_CHANNEL, "") or "")
+        role = self._current_role()
+        if not host or port <= 0 or not channel:
+            return "Orca Remote is not set up. Press Orca+Ctrl+R to open settings."
+        server = host if port == DEFAULT_SETTINGS.get(SETTING_PORT) else f"{host} port {port}"
+        role_text = "host" if role == ROLE_HOST else "client"
+
+        transport = self._transport
+        if transport is None:
+            return (
+                f"Orca Remote is disconnected from {server}. "
+                "Press Orca+Ctrl+Page Up to connect."
+            )
+        if self._trust_dialog is not None:
+            return f"Orca Remote is waiting for you to trust {server}."
+        if not transport.connected:
+            status = self._last_transport_status
+            detail = f" Last status: {status}." if status else ""
+            return f"Orca Remote is not connected to {server}.{detail}"
+
+        parts = [f"Orca Remote is connected to {server} as {role_text}."]
+        peers = list(self._channel_peers.values())
+        if role == ROLE_HOST:
+            masters = sum(1 for kind in peers if kind == CONNECTION_TYPE_MASTER)
+            if masters == 0:
+                parts.append("No one is controlling this machine.")
+            elif masters == 1:
+                parts.append("One person can control this machine.")
+            else:
+                parts.append(f"{masters} people can control this machine.")
+        else:
+            slaves = sum(1 for kind in peers if kind == CONNECTION_TYPE_SLAVE)
+            if slaves == 0:
+                parts.append("The remote machine is not connected.")
+            elif slaves == 1:
+                parts.append("The remote machine is connected.")
+            else:
+                parts.append(f"{slaves} remote machines are connected.")
+            if self._focus_on_remote:
+                parts.append("You are controlling the remote machine.")
+            else:
+                parts.append("You are controlling this machine.")
+            if self._inbound_speech_muted:
+                parts.append("Remote speech is muted.")
+        return " ".join(parts)
+
+    def _note_channel_joined(self, message: dict) -> None:
+        peers: dict[int, str] = {}
+        for client in message.get("clients") or []:
+            if isinstance(client, dict) and isinstance(client.get("id"), int):
+                peers[client["id"]] = str(client.get("connection_type", ""))
+        if not peers:
+            for user_id in message.get("user_ids") or []:
+                if isinstance(user_id, int):
+                    peers[user_id] = ""
+        self._channel_peers = peers
+
+    def _note_client_joined(self, message: dict) -> None:
+        client = message.get("client") if isinstance(message.get("client"), dict) else {}
+        user_id = client.get("id", message.get("user_id"))
+        if isinstance(user_id, int):
+            peers = dict(self._channel_peers)
+            peers[user_id] = str(client.get("connection_type", ""))
+            self._channel_peers = peers
+
+    def _note_client_left(self, message: dict) -> None:
+        client = message.get("client") if isinstance(message.get("client"), dict) else {}
+        user_id = message.get("user_id", client.get("id"))
+        if isinstance(user_id, int) and user_id in self._channel_peers:
+            peers = dict(self._channel_peers)
+            peers.pop(user_id, None)
+            self._channel_peers = peers
 
     def mute_inbound_toggle(self) -> bool:
         """Toggle the master-side inbound-speech mute. Bound to Orca+Ctrl+Shift+M.
@@ -1570,6 +1672,8 @@ class RemoteExtension(Extension):
         self._leave_remote_focus()
         # A new session should report its own dropped-speech reasons.
         self._speak_ignored_reasons.clear()
+        self._channel_peers = {}
+        self._last_transport_status = ""
         if self._loop is None or self._transport is None:
             # No live transport, but we may still have a stale held-key
             # set from a previous session. Drain it anyway.
@@ -1619,6 +1723,7 @@ class RemoteExtension(Extension):
             if not self._inbound_speech_drop_reason():
                 GLib.idle_add(self._interrupt_speech_idle_cb)
         elif msg_type == protocol.MSG_CHANNEL_JOINED:
+            self._note_channel_joined(message)
             if self._announced_join:
                 return
             self._announced_join = True
@@ -1629,6 +1734,7 @@ class RemoteExtension(Extension):
             else:
                 self._say_async("Orca Remote connected.")
         elif msg_type == protocol.MSG_CLIENT_JOINED:
+            self._note_client_joined(message)
             self._peer_not_connected_announced = False
             # A new master has no braille yet; send the next frame
             # even if it matches what the previous peer was shown.
@@ -1636,6 +1742,7 @@ class RemoteExtension(Extension):
             self._sent_braille_info = False
             self._say_async("Orca Remote: peer joined.")
         elif msg_type == protocol.MSG_CLIENT_LEFT:
+            self._note_client_left(message)
             self._peer_not_connected_announced = False
             # A master that drops mid-chord never sends its releases;
             # without this its Ctrl/Insert stay held on this machine.
@@ -2126,6 +2233,7 @@ class RemoteExtension(Extension):
         return role if role in (ROLE_CLIENT, ROLE_HOST) else ROLE_CLIENT
 
     def _on_status(self, status: str) -> None:
+        self._last_transport_status = status
         self._log(f"transport: {status}")
 
     def _on_transport_disconnected(self) -> None:
@@ -2136,6 +2244,7 @@ class RemoteExtension(Extension):
         self._leave_remote_focus()
         self._release_held_keys_idle_cb()
         self._peer_not_connected_announced = False
+        self._channel_peers = {}
         self._last_outbound_speech = ""
         self._last_outbound_braille = ("", -2)
         self._sent_braille_info = False

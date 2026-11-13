@@ -146,6 +146,7 @@ Modern extension shortcuts:
 | Orca+Ctrl+PageUp | `connect` |
 | Orca+Ctrl+PageDown | `disconnect_session` |
 | Ctrl+Shift+Orca+C | `push_clipboard` |
+| Orca+Alt+S | `speak_status` |
 | Orca+Alt+Tab | `switch_side` |
 
 Legacy shortcuts:

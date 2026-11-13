@@ -169,6 +169,7 @@ Modern extension shortcuts:
 | Orca + Ctrl + Page Up | Connect |
 | Orca + Ctrl + Page Down | Disconnect |
 | Ctrl + Shift + Orca + C | Push clipboard |
+| Orca + Alt + S | Speak status: connected or not, server, role, who else is on the channel, and whether you are controlling the remote |
 | Orca + Alt + Tab | Client role: focus remote or return to local |
 
 While remote focus is active, Orca Remote keeps its own command chords local and forwards normal screen-reader commands such as Insert+Down to the remote peer.

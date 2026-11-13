@@ -123,6 +123,7 @@ def _load_remote_module():
 _KEYSYM_NAME_TO_INT: dict[str, int] = {
     "r": 0x72,
     "m": 0x6d,
+    "s": 0x73,
     "c": 0x63,
     "Page_Up": 0xff55,
     "Page_Down": 0xff56,
