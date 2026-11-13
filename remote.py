@@ -59,6 +59,7 @@ from .settings_dialog import (
     SETTING_PORT,
     SETTING_ROLE,
     build_settings_dialog,
+    build_trust_dialog,
 )
 from .keymap import forwardable_keysyms, keysym_to_vk, vk_to_keysym
 from .protocol import CONNECTION_TYPE_MASTER, CONNECTION_TYPE_SLAVE
@@ -429,6 +430,7 @@ class RemoteExtension(Extension):
         # unreachable on marco/wayland-flagged sessions, and present()
         # doesn't reliably re-raise. Destroy-rebuild is predictable.
         self._settings_dialog: Any = None
+        self._trust_dialog: Any = None
         # (SpeechServer class, original speak_character, original
         # speak_key_event) while _hook_character_speech is active.
         self._char_speech_patch: "tuple[Any, Any, Any] | None" = None
@@ -2142,12 +2144,67 @@ class RemoteExtension(Extension):
         return False
 
     def _on_fingerprint_mismatch(self, actual: str) -> None:
-        # Surface the fingerprint we actually saw so the user can
-        # paste it into the setting if they trust it. Also copy it
-        # to the clipboard from the GLib main thread so a blind user
-        # doesn't have to memorise a 64-char hex string.
-        GLib.idle_add(self._copy_fingerprint_idle_cb, actual)
-        self._say_async(
+        """Transport saw a certificate we do not trust (asyncio thread).
+
+        Ask the user, on the GLib thread, whether to trust it. A blank
+        pin (first connection) and a changed pin get different dialogs.
+        """
+
+        GLib.idle_add(self._fingerprint_prompt_idle_cb, actual)
+
+    def _fingerprint_prompt_idle_cb(self, actual: str) -> bool:
+        actual = _normalize_fingerprint(actual)
+        host = str(self._settings.get(SETTING_HOST, "") or "")
+        port = int(self._settings.get(SETTING_PORT, 0) or 0)
+        saved = _normalize_fingerprint(
+            str(self._settings.get(SETTING_FINGERPRINT, "") or ""),
+        )
+        changed = bool(saved)
+        # Keep a copy on disk for comparing with the server's owner.
+        self._write_fingerprint_file(actual)
+        if self._trust_dialog is not None:
+            try:
+                self._trust_dialog.destroy()
+            except Exception:  # pylint: disable=broad-except
+                pass
+            self._trust_dialog = None
+
+        def _on_result(trusted: bool) -> None:
+            self._trust_dialog = None
+            self._on_trust_result(trusted, actual, host, port)
+
+        try:
+            self._trust_dialog = build_trust_dialog(
+                host, port, actual, changed, _on_result,
+            )
+        except Exception as error:  # pylint: disable=broad-except
+            # No dialog (GTK trouble): fall back to the manual route.
+            self._log(f"trust dialog failed: {error}")
+            self._copy_fingerprint_idle_cb(actual)
+            self._say(self._manual_fingerprint_instructions())
+        return False  # one-shot
+
+    def _on_trust_result(self, trusted: bool, actual: str, host: str, port: int) -> None:
+        if not trusted:
+            self._say(
+                "Orca Remote: not connected. The server was not trusted."
+            )
+            return
+        if (
+            str(self._settings.get(SETTING_HOST, "") or "") != host
+            or int(self._settings.get(SETTING_PORT, 0) or 0) != port
+        ):
+            # Settings moved to another server while the dialog was up:
+            # this fingerprint belongs to the old one.
+            self._say("Orca Remote: the server changed meanwhile; not saved.")
+            return
+        self._say("Orca Remote: server trusted. Connecting.")
+        self._set_auto_connect(True)
+        # Saves the pin and restarts the transport.
+        self._set_setting(SETTING_FINGERPRINT, actual)
+
+    def _manual_fingerprint_instructions(self) -> str:
+        return (
             "Orca Remote: server fingerprint did not match. "
             f"The fingerprint was copied to the clipboard and saved to "
             f"{_fingerprint_file_path()}. "

@@ -113,6 +113,10 @@ def build_settings_dialog(
         str(initial.get(SETTING_FINGERPRINT, "")),
         accessible_name="Server fingerprint SHA-256",
     )
+    fingerprint_entry.set_placeholder_text("Leave blank to be asked on first connect")
+    fingerprint_entry.get_accessible().set_description(
+        "Leave blank to be asked whether to trust the server on first connect."
+    )
     role_combo = _add_role_row(
         grid, 4, "_Role:", str(initial.get(SETTING_ROLE, ROLE_CLIENT)),
     )
@@ -257,3 +261,97 @@ def _add_role_row(
 
     label.set_mnemonic_widget(combo)
     return combo
+
+
+def format_fingerprint(fingerprint: str) -> str:
+    """Group a hex fingerprint in fours so it can be read and compared."""
+
+    return " ".join(fingerprint[i:i + 4] for i in range(0, len(fingerprint), 4))
+
+
+def build_trust_dialog(
+    host: str,
+    port: int,
+    fingerprint: str,
+    changed: bool,
+    on_result: Callable[[bool], None],
+) -> Gtk.Dialog:
+    """Ask whether to trust a relay's certificate, without blocking.
+
+    `changed` is False on a first connection (no fingerprint saved) and
+    True when the server presents a different certificate than the
+    saved one. `on_result(True)` means trust it; it is invoked exactly
+    once, after the dialog is destroyed. The safe answer is the default
+    when the certificate changed.
+    """
+
+    if changed:
+        title = "Orca Remote: server certificate changed"
+        primary = f"The certificate of {host} port {port} has changed."
+        secondary = (
+            "This is normal when the server's certificate was renewed or "
+            "the server was reinstalled. It can also mean someone is "
+            "intercepting the connection. Trust the new certificate only "
+            "if you expected this change or have checked the fingerprint "
+            "with the server's owner."
+        )
+        trust_label = "_Trust new certificate"
+        cancel_label = "_Stay disconnected"
+        message_type = Gtk.MessageType.WARNING
+    else:
+        title = "Orca Remote: trust this server?"
+        primary = f"First connection to {host} port {port}."
+        secondary = (
+            "Orca Remote remembers this server's certificate and warns you "
+            "if it ever changes. Trust it if this is the server you meant "
+            "to connect to."
+        )
+        trust_label = "_Trust and connect"
+        cancel_label = "_Cancel"
+        message_type = Gtk.MessageType.QUESTION
+
+    dialog = Gtk.MessageDialog(
+        message_type=message_type,
+        buttons=Gtk.ButtonsType.NONE,
+        text=primary,
+        modal=True,
+    )
+    dialog.set_title(title)
+    dialog.format_secondary_text(secondary)
+    dialog.add_button(cancel_label, Gtk.ResponseType.CANCEL)
+    dialog.add_button(trust_label, Gtk.ResponseType.OK)
+    dialog.set_default_response(
+        Gtk.ResponseType.CANCEL if changed else Gtk.ResponseType.OK
+    )
+
+    # The fingerprint goes in a read-only entry: reachable with Tab,
+    # readable character by character, and selectable for copying.
+    box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+    label = Gtk.Label(label="_Fingerprint (SHA-256):", xalign=0.0)
+    label.set_use_underline(True)
+    entry = Gtk.Entry()
+    entry.set_text(format_fingerprint(fingerprint))
+    entry.set_editable(False)
+    entry.set_hexpand(True)
+    entry.set_width_chars(80)
+    entry.get_accessible().set_name("Server fingerprint SHA-256")
+    label.set_mnemonic_widget(entry)
+    box.pack_start(label, False, False, 0)
+    box.pack_start(entry, True, True, 0)
+    dialog.get_message_area().pack_start(box, False, False, 0)
+
+    def _on_response(_dialog: Gtk.Dialog, response: int) -> None:
+        _dialog.destroy()
+        on_result(response == Gtk.ResponseType.OK)
+
+    dialog.connect("response", _on_response)
+    dialog.show_all()
+    # Focus the default button, not the entry, so Enter answers.
+    default = dialog.get_widget_for_response(
+        Gtk.ResponseType.CANCEL if changed else Gtk.ResponseType.OK
+    )
+    if default is not None:
+        default.grab_focus()
+    # Same focus-stealing workaround as the settings dialog.
+    dialog.present_with_time(int(time.time()))
+    return dialog

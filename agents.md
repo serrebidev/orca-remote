@@ -99,7 +99,7 @@ The settings file is written with `0o600` permissions because the channel key is
 
 ### TLS Fingerprint Pinning
 
-The modern transport does not use CA trust or TOFU. It computes the relay certificate SHA-256 fingerprint after TLS handshake and refuses the connection unless the configured fingerprint matches. On mismatch, it reports the actual fingerprint so the UI can copy it to the clipboard.
+The modern transport does not use CA trust. It computes the relay certificate SHA-256 fingerprint after the TLS handshake and refuses the connection, before sending anything, unless the configured fingerprint matches. On a blank or mismatched pin it reports the actual fingerprint, and `RemoteExtension._fingerprint_prompt_idle_cb` shows `settings_dialog.build_trust_dialog`: a first-use "Trust this server?" dialog, or a "certificate changed" warning whose default button is Stay disconnected. Trusting saves the pin and reconnects. The spoken copy-and-paste instructions are the fallback when no dialog can be shown.
 
 ### Roles
 

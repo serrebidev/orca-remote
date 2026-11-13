@@ -152,17 +152,27 @@ class TestFingerprintPin:
         assert "not 64" in instance._say.call_args.args[0]
         instance._restart_transport.assert_called_once()
 
-    def test_mismatch_announcement_tells_the_user_to_select_first(self):
+    def test_mismatch_is_handed_to_the_glib_thread(self):
         mod = _load_remote_module()
         instance = _instance(mod)
-        instance._say_async = mock.Mock()
-        instance.controller = mock.Mock()
-
-        with mock.patch.object(mod.GLib, "idle_add", create=True), \
-                mock.patch.object(mod, "_fingerprint_file_path", return_value="/home/u/fp.txt"):
+        with mock.patch.object(mod.GLib, "idle_add", create=True) as idle_add:
             instance._on_fingerprint_mismatch(GOOD_PIN)
+        idle_add.assert_called_once_with(instance._fingerprint_prompt_idle_cb, GOOD_PIN)
 
-        announcement = instance._say_async.call_args.args[0]
+    def test_without_a_dialog_the_user_gets_manual_instructions(self):
+        mod = _load_remote_module()
+        instance = _instance(mod)
+        instance._trust_dialog = None
+        instance._settings = {mod.SETTING_HOST: "relay", mod.SETTING_PORT: 6837}
+        instance._write_fingerprint_file = mock.Mock(return_value="")
+        instance._copy_fingerprint_idle_cb = mock.Mock()
+
+        with mock.patch.object(mod, "build_trust_dialog", side_effect=RuntimeError("no gtk")), \
+                mock.patch.object(mod, "_fingerprint_file_path", return_value="/home/u/fp.txt"):
+            instance._fingerprint_prompt_idle_cb(GOOD_PIN)
+
+        instance._copy_fingerprint_idle_cb.assert_called_once_with(GOOD_PIN)
+        announcement = instance._say.call_args.args[0]
         assert "Control+A" in announcement
         assert "/home/u/fp.txt" in announcement
 
@@ -254,4 +264,55 @@ class TestSettingsSaveRemembersConnect:
         instance._on_settings_result(None)
 
         assert instance._settings[mod.SETTING_AUTO_CONNECT] is False
+        instance._restart_transport.assert_not_called()
+
+
+class TestTrustPrompt:
+    """First connect and changed certificates ask instead of failing."""
+
+    def _prompt(self, mod, saved_pin):
+        instance = _instance(mod)
+        instance._trust_dialog = None
+        instance._settings = {
+            mod.SETTING_HOST: "relay.example", mod.SETTING_PORT: 6837,
+            mod.SETTING_FINGERPRINT: saved_pin, mod.SETTING_AUTO_CONNECT: False,
+        }
+        instance._write_fingerprint_file = mock.Mock(return_value="")
+        with mock.patch.object(mod, "build_trust_dialog") as build:
+            instance._fingerprint_prompt_idle_cb(GOOD_PIN.upper())
+        return instance, build
+
+    def test_blank_pin_asks_as_a_first_connection(self):
+        mod = _load_remote_module()
+        _instance_, build = self._prompt(mod, "")
+        host, port, fingerprint, changed, _cb = build.call_args.args
+        assert (host, port, fingerprint, changed) == ("relay.example", 6837, GOOD_PIN, False)
+
+    def test_different_saved_pin_warns_that_it_changed(self):
+        mod = _load_remote_module()
+        _instance_, build = self._prompt(mod, "ab" * 32)
+        assert build.call_args.args[3] is True
+
+    def test_trusting_saves_the_pin_and_connects(self):
+        mod = _load_remote_module()
+        instance, build = self._prompt(mod, "")
+        build.call_args.args[4](True)
+        assert instance._settings[mod.SETTING_FINGERPRINT] == GOOD_PIN
+        assert instance._settings[mod.SETTING_AUTO_CONNECT] is True
+        instance._restart_transport.assert_called_once()
+
+    def test_declining_keeps_the_old_pin(self):
+        mod = _load_remote_module()
+        old = "ab" * 32
+        instance, build = self._prompt(mod, old)
+        build.call_args.args[4](False)
+        assert instance._settings[mod.SETTING_FINGERPRINT] == old
+        instance._restart_transport.assert_not_called()
+
+    def test_pin_is_not_saved_if_the_server_setting_moved(self):
+        mod = _load_remote_module()
+        instance, build = self._prompt(mod, "")
+        instance._settings[mod.SETTING_HOST] = "other.example"
+        build.call_args.args[4](True)
+        assert instance._settings[mod.SETTING_FINGERPRINT] == ""
         instance._restart_transport.assert_not_called()

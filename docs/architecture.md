@@ -142,11 +142,17 @@ an older Orca.
 
 The public relay (`nvdaremote.com`) uses a self-signed cert; even
 self-hosters often do. CA trust would either be useless (everyone
-self-signs) or require manual CA install on every client. SHA-256
-pin gives the same guarantee as TOFU after first connect, but
-makes the first-connect bootstrap explicit (you have to paste the
-fingerprint), which avoids the silent-on-bootstrap surprise of
-TOFU.
+self-signs) or require manual CA install on every client. Trust
+rests on a SHA-256 pin of the relay's certificate instead.
+
+The first connection is trust on first use, but never silent: with
+no pin saved, the transport refuses the connection before sending
+anything, and `RemoteExtension` asks "Trust this server?" with the
+host, port and fingerprint (`build_trust_dialog`). Only an explicit
+"Trust and connect" saves the pin. A pin that no longer matches gets
+a separate warning dialog whose default is "Stay disconnected", so an
+Enter press never accepts a changed certificate. If the dialog cannot
+be built, the older spoken copy-and-paste instructions are used.
 
 ### Non-blocking settings dialog
 

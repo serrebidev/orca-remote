@@ -4,10 +4,10 @@ Owns one outbound TLS connection to the relay. Reads newline-framed
 JSON messages, dispatches them to a callback, and exposes a send()
 coroutine for outbound messages. Reconnects on failure with
 exponential backoff. Verifies the peer cert by SHA-256 fingerprint
-pin -- no CA trust, no TOFU. If the configured fingerprint is empty
-or does not match, the connection is rejected and the actual
-fingerprint is reported back to the caller so it can be surfaced to
-the user (who then pastes it into settings).
+pin -- no CA trust. If the configured fingerprint is empty or does
+not match, the connection is rejected before anything is sent and the
+actual fingerprint is reported back to the caller, which asks the user
+whether to trust it (trust on first use, with a warning on change).
 """
 
 from __future__ import annotations

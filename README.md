@@ -118,9 +118,13 @@ wlroots -- see [docs/architecture.md](docs/architecture.md).
 
 ## First connect
 
-The extension pins the relay TLS certificate by SHA-256 fingerprint. If the fingerprint field is empty or incorrect, the connection is refused, the actual fingerprint is copied to your clipboard, and Orca announces what happened.
+The extension pins the relay's TLS certificate by its SHA-256 fingerprint. You do not need to look the fingerprint up: leave **Server fingerprint (SHA-256)** blank in settings and connect. Orca Remote then asks **"Trust this server?"**, showing the server's name and fingerprint. Choose **Trust and connect** and the fingerprint is saved for next time.
 
-To pre-fetch the fingerprint:
+If the server later presents a different certificate, nothing is sent and you get a warning instead: **"The certificate of ... has changed."** That is normal after the server's certificate is renewed or the server is reinstalled, but it can also mean someone is intercepting the connection. **Stay disconnected** is the default button. Choose **Trust new certificate** only if you expected the change or have checked the fingerprint with the server's owner.
+
+Either way, the fingerprint that was seen is also saved to `~/orca-remote-fingerprint.txt` for comparing.
+
+To check a fingerprint yourself, for example to compare it with what the server's owner tells you:
 
 ```bash
 openssl s_client -servername nvdaremote.com -connect nvdaremote.com:6837 \
@@ -130,7 +134,7 @@ openssl s_client -servername nvdaremote.com -connect nvdaremote.com:6837 \
   | tr '[:upper:]' '[:lower:]'
 ```
 
-Paste that value into **Server fingerprint (SHA-256)** in Orca Remote settings. If the relay's certificate ever changes, Orca announces the mismatch, copies the new fingerprint to the clipboard, and saves it to `~/orca-remote-fingerprint.txt` -- open that file with `nano ~/orca-remote-fingerprint.txt` if the clipboard paste does not work. Then press Orca+Ctrl+R, focus the Server fingerprint field, press **Control+A** to select the old value, then paste with Control+V. A value that is not 64 hex characters is refused with a spoken reason, so a paste that lands next to the old value cannot silently break the connection.
+You can also paste a fingerprint into the settings field yourself. A value that is not 64 hex characters is refused with a spoken reason.
 
 ## Roles
 
