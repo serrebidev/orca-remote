@@ -18,6 +18,7 @@ GLib loop until the local user clicked something.
 from __future__ import annotations
 
 import random
+import time
 from typing import Any, Callable, Optional
 
 import gi
@@ -150,6 +151,12 @@ def build_settings_dialog(
 
     dialog.connect("response", _on_response)
     dialog.show_all()
+    # Orca's key handler is not a GTK event, so the dialog has no user
+    # timestamp. KWin's focus-stealing prevention then maps it behind
+    # the focused window and only flags it "demands attention": it is
+    # open but silent and unreachable. Presenting with the current time
+    # is what Orca's own dialogs do, and the window manager accepts it.
+    dialog.present_with_time(int(time.time()))
     return dialog
 
 
