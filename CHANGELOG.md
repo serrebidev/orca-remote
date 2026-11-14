@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.9.13 -- 2026-11-13
+
+Everything in this release was contributed by Chase
+(chasecichorz) from the Orca Bridge fork.
 
 ### Fixed
 
