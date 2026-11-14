@@ -259,3 +259,29 @@ def test_legacy_installer_preserves_backslashes_and_newlines_in_settings(tmp_pat
         and isinstance(node.targets[0], ast.Name)
     }
     assert assignments["YOUR_NVDAREMOTE_KEY"] == secret
+
+
+def test_legacy_install_then_uninstall_fresh_account_from_any_cwd(tmp_path):
+    """No Orca data dir yet, run from elsewhere, XDG_DATA_HOME honoured."""
+
+    data = tmp_path / "data"
+    env = {**os.environ, "HOME": str(tmp_path / "home"), "XDG_DATA_HOME": str(data)}
+    orca = data / "orca"
+
+    install = subprocess.run(
+        [sys.executable, str(ROOT / "install"), "127.0.0.1", "6837", "k"],
+        input="\n", capture_output=True, text=True, cwd=tmp_path, env=env,
+    )
+    assert install.returncode == 0, install.stderr
+    assert "--install-extension" not in install.stdout
+    custom = (orca / "orca-customizations.py").read_text(encoding="utf-8")
+    assert "ORCA_REMOTE_AUTO_CONNECT = True" in custom
+    assert (orca / "orca-scripts" / "transport.py").is_file()
+
+    uninstall = subprocess.run(
+        [sys.executable, str(ROOT / "uninstall")],
+        capture_output=True, text=True, cwd=tmp_path, env=env,
+    )
+    assert uninstall.returncode == 0, uninstall.stderr
+    assert not (orca / "orca-customizations.py").exists()
+    assert not list((orca / "orca-scripts").glob("*.py"))

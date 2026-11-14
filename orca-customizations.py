@@ -4,7 +4,7 @@ import traceback
 import threading
 
 # Orca Remote Settings
-YOUR_ORCA_SCRIPTS_FOLDER = os.path.expanduser("~/.local/share/orca/orca-scripts")
+YOUR_ORCA_SCRIPTS_FOLDER = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "orca", "orca-scripts")
 YOUR_NVDAREMOTE_SERVER_ADDRESS = "host"
 YOUR_NVDAREMOTE_SERVER_PORT = 6837
 YOUR_NVDAREMOTE_KEY = "key"
@@ -729,8 +729,10 @@ def _toggle_mute(script=None, inputEvent=None):
 def _send_ctrl_alt_del(script=None, inputEvent=None):
     """Send Ctrl+Alt+Del to the remote machine.
     Gesture: Orca+Shift+Delete"""
-    controller.send_sas()
-    _speak_message("Sent Ctrl Alt Delete")
+    if controller.send_sas():
+        _speak_message("Sent Ctrl Alt Delete")
+    else:
+        _speak_message("Not connected; Ctrl Alt Delete not sent")
     return True
 
 # ---- Gesture Registration ----

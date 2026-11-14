@@ -52,6 +52,15 @@ def test_retrying_reports_the_last_transport_status():
     )
 
 
+def test_untrusted_certificate_is_not_read_out_as_hex():
+    mod = _load_remote_module()
+    ext = _ext(mod, connected=False)
+    ext._on_status("fingerprint mismatch (got " + "ab" * 32 + ")")
+    report = ext._status_report()
+    assert "ab" * 32 not in report
+    assert "not trusted" in report and "Page Up" in report
+
+
 def test_waiting_on_the_trust_dialog():
     mod = _load_remote_module()
     ext = _ext(mod, connected=False)

@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.9.14 -- 2026-11-13
+
+### Fixed
+
+- Orca+Alt+S no longer reads out a 64-character hex fingerprint after
+  you decline to trust a server, or after its certificate changed. It
+  now says the server's certificate is not trusted and that
+  Orca+Ctrl+Page Up asks again.
+- The legacy `install` script crashed on an account where Orca had
+  never run, because `~/.local/share/orca` did not exist yet. It now
+  creates the folder.
+- The legacy `install` and `uninstall` scripts only worked when run
+  from inside the checkout. Run from anywhere else, `install` crashed
+  and `uninstall` silently removed nothing. Both now find their files
+  next to themselves.
+- The legacy scripts and plugin now honour `XDG_DATA_HOME`, the folder
+  Orca itself reads, instead of always using `~/.local/share`.
+- The legacy installer suggested `orca --install-extension`, a flag
+  released Orca does not have. It now points to `./install-extension`.
+- Legacy Orca+Shift+Delete said "Sent Ctrl Alt Delete" even when not
+  connected. It now says nothing was sent.
+- `tests/fake_master.py` documented `host` and `port` as positional
+  arguments; they are `--host` and `--port`.
+
 ## 0.9.13 -- 2026-11-13
 
 Everything in this release was contributed by Chase

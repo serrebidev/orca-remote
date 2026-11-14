@@ -13,7 +13,10 @@ def remove_if_exists(path):
 
 
 def main():
-    orca_folder = os.path.expanduser("~/.local/share/orca")
+    # The orca-scripts glob below is relative to this checkout.
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    orca_folder = os.path.join(base, "orca")
     customizations_path = os.path.join(orca_folder, "orca-customizations.py")
     backup_path = os.path.join(orca_folder, "orca-customizations-backup.py")
 

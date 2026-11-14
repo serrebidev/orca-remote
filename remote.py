@@ -1235,6 +1235,12 @@ class RemoteExtension(Extension):
             return f"Orca Remote is waiting for you to trust {server}."
         if not transport.connected:
             status = self._last_transport_status
+            if status.startswith("fingerprint mismatch"):
+                # The raw status carries a 64-character hex string.
+                return (
+                    f"Orca Remote is not connected to {server}: its certificate "
+                    "is not trusted. Press Orca+Ctrl+Page Up to be asked again."
+                )
             detail = f" Last status: {status}." if status else ""
             return f"Orca Remote is not connected to {server}.{detail}"
 

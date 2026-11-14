@@ -155,9 +155,11 @@ class RemoteController:
                 self.speech_callback("Clipboard is empty")
 
     def send_sas(self):
-        """Send Ctrl+Alt+Del to the remote machine."""
+        """Send Ctrl+Alt+Del to the remote machine. True when sent."""
         if self.transport.connected:
             self.transport.send(type="send_SAS")
+            return True
+        return False
 
     def send_braille_info(self, name, num_cells):
         """Send local braille display info to remote."""

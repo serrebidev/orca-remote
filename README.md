@@ -176,7 +176,7 @@ While remote focus is active, Orca Remote keeps its own command chords local and
 
 ## Legacy install
 
-The legacy installer copies `orca-customizations.py` and `orca-scripts/` into `~/.local/share/orca/`:
+The legacy installer copies `orca-customizations.py` and `orca-scripts/` into `$XDG_DATA_HOME/orca/` (usually `~/.local/share/orca/`):
 
 ```bash
 ./install

@@ -236,6 +236,20 @@ What a WSLg session *can* verify:
   `~/.local/share/orca/orca-remote-debug.log`.
 - Grabs (`REMOTE: master grab active (orca device): N held, M refused`).
 
+Xvfb traps for live rigs (verified 2026-11-13):
+
+- Run a window manager (`openbox`) inside the Xvfb session. Without
+  one, closing any dialog leaves no active window, Orca deactivates its
+  script and drops every key grab, and all Orca+ chords go dead.
+  Dialogs are also never announced without window activation.
+- Space Insert chords more than about 1 s apart when synthesizing
+  them. Orca reads two quick Insert presses as a double press and the
+  second loses its Orca modifier.
+- Orca's debug file is buffered; hook `_say` / `_speak_message_idle_cb`
+  in-process to capture speech instead of polling the file.
+- On the Debian VPS (Orca 48.1, Xvfb + openbox), physical legacy
+  chords via `xdotool key Insert+Alt_L+Tab` do dispatch.
+
 What it cannot: chord → handler dispatch, and X clipboard transfers
 between processes — WSLg has no clipboard manager, so a selection set
 by one process is not readable by another (reads inside the owning

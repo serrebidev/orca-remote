@@ -45,12 +45,21 @@ def make_orca_customizations(destfile, nvda_remote_host=None, nvda_remote_port=N
         f2.write(customizations)
 
 
+def orca_data_folder():
+    """Orca's user data dir, where it looks for orca-customizations.py."""
+    base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    return os.path.join(base, "orca")
+
+
 def main():
-    orca_folder = os.path.expanduser("~/.local/share/orca")
+    # Source paths below are relative to this checkout, not the caller's cwd.
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    orca_folder = orca_data_folder()
     orca_scripts_folder = os.path.join(orca_folder, "orca-scripts")
     print("This installs the legacy Orca Remote customization path.")
-    print("For modern Orca versions, prefer: ./build-orca-ext.sh . && orca --install-extension remote.orca-ext")
+    print("For modern Orca versions, prefer: ./install-extension")
     input("Installing legacy Orca Remote to %s. Press Enter to continue or Ctrl+C to abort:" % orca_folder)
+    os.makedirs(orca_folder, exist_ok=True)
 
     customizations_path = os.path.join(orca_folder, "orca-customizations.py")
     if os.path.exists(customizations_path):

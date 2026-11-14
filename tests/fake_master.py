@@ -7,7 +7,7 @@ running orca-remote in host mode on the same channel) should
 synthesize each keystroke into its focused window.
 
 Usage:
-    python3 fake_master.py <channel> <fingerprint> [host] [port]
+    python3 fake_master.py <channel> <fingerprint> [--host HOST] [--port PORT]
     python3 fake_master.py <channel> <fingerprint> --type "hello"
 
 With --type the script sends each character of the supplied string
