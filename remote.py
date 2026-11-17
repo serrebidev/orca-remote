@@ -58,6 +58,7 @@ from .settings_dialog import (
     SETTING_HOST,
     SETTING_PORT,
     SETTING_ROLE,
+    build_about_dialog,
     build_settings_dialog,
     build_trust_dialog,
 )
@@ -1104,6 +1105,14 @@ class RemoteExtension(Extension):
                 desktop_keybinding=keybindings.KeyBinding("Tab", alt),
                 laptop_keybinding=keybindings.KeyBinding("Tab", alt),
             ),
+            KeyboardCommand(
+                "orcaRemoteAboutHandler",
+                self.show_about,
+                self.GROUP_LABEL,
+                "Show Orca Remote About",
+                desktop_keybinding=keybindings.KeyBinding("a", ctrl_shift),
+                laptop_keybinding=keybindings.KeyBinding("a", ctrl_shift),
+            ),
         ]
 
     def connect(self) -> bool:
@@ -1432,6 +1441,22 @@ class RemoteExtension(Extension):
             except Exception as error:  # pylint: disable=broad-except
                 self._log(f"KeysetGrab.release raised: {error}")
             self._master_grab = None
+
+    def show_about(self) -> bool:
+        """Show the About dialog. Bound to Orca+Ctrl+Shift+A."""
+        build_about_dialog(self._manifest_version())
+        return True
+
+    def _manifest_version(self) -> str:
+        try:
+            import tomllib
+            from pathlib import Path
+
+            manifest = Path(__file__).resolve().parent / "manifest.toml"
+            with manifest.open("rb") as handle:
+                return tomllib.load(handle)["extension"]["version"]
+        except Exception:
+            return "0.9.14"
 
     def open_settings(self) -> bool:
         """Show the settings dialog. Bound to Insert+Ctrl+R.

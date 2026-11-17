@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.15 -- 2026-11-16
+
+- About dialog (Orca+Ctrl+Shift+A): version, description, and every project link as its own focusable button (GitHub, Forgejo, Projects, Telegram, Full credits).
+
 ## 0.9.14 -- 2026-11-13
 
 ### Fixed

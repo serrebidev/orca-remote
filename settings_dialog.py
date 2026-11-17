@@ -47,6 +47,52 @@ _ROLE_LABELS: list[tuple[str, str]] = [
     (ROLE_HOST,   "Broadcast speech (let a remote machine control us)"),
 ]
 
+SUPPORT_LINKS: list[tuple[str, str]] = [
+    ("GitHub: serrebidev/orca-remote", "https://github.com/serrebidev/orca-remote"),
+    ("Forgejo: serrebi/orca-remote", "https://git.serrebiradio.com/serrebi/orca-remote"),
+    ("Projects: projects.serrebiradio.com", "https://projects.serrebiradio.com"),
+    ("Telegram: SerrebiProjects", "https://t.me/SerrebiProjects"),
+    ("Full credits (CREDITS.md)", "https://git.serrebiradio.com/serrebi/orca-remote/src/branch/main/CREDITS.md"),
+]
+
+
+def build_about_dialog(version: str) -> Gtk.Dialog:
+    """Show the About dialog: description, then every link as its own button.
+
+    Links are Gtk.LinkButton widgets: Tab reaches each one, Enter opens it.
+    Non-blocking, same pattern as the settings dialog.
+    """
+    dialog = Gtk.Dialog(title="About Orca Remote", modal=True)
+    dialog.add_button("_Close", Gtk.ResponseType.OK)
+    dialog.set_default_response(Gtk.ResponseType.OK)
+
+    content = dialog.get_content_area()
+    content.set_spacing(8)
+    content.set_border_width(12)
+
+    heading = Gtk.Label(label=f"Orca Remote {version}", xalign=0.0)
+    heading.set_markup("<b>Orca Remote {}</b>".format(version))
+    heading.get_accessible().set_name("Orca Remote version")
+    content.pack_start(heading, False, False, 0)
+
+    description = Gtk.Label(
+        label="NVDA-Remote-compatible remote access for Orca.\nMIT license.\n\nAuthor: serrebidev."
+    )
+    description.set_xalign(0.0)
+    description.set_selectable(True)
+    description.get_accessible().set_name("Orca Remote description")
+    content.pack_start(description, False, False, 0)
+
+    for label, url in SUPPORT_LINKS:
+        link = Gtk.LinkButton.new_with_label(url, label)
+        link.get_accessible().set_name(label)
+        content.pack_start(link, False, False, 0)
+
+    dialog.connect("response", lambda _dialog, _response: _dialog.destroy())
+    dialog.show_all()
+    dialog.present_with_time(int(time.time()))
+    return dialog
+
 
 DEFAULT_SETTINGS: dict[str, Any] = {
     SETTING_HOST: "nvdaremote.com",

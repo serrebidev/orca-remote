@@ -1,7 +1,7 @@
 [extension]
 name = "remote"
 display-name = "Orca Remote"
-version = "0.9.14"
+version = "0.9.15"
 author = "SerrebiDev and contributors"
 license = "LGPL-2.1-or-later"
 url = "https://git.serrebiradio.com/serrebi/orca-remote"
