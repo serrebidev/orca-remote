@@ -121,6 +121,7 @@ def _load_remote_module():
 # orca-remote actually binds. Lets us check binding keysyms against
 # the bypass-list integer set.
 _KEYSYM_NAME_TO_INT: dict[str, int] = {
+    "a": 0x61,
     "r": 0x72,
     "m": 0x6d,
     "s": 0x73,

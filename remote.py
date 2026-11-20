@@ -206,6 +206,8 @@ _OWN_CTRL_SHIFT_CHORD_KEYSYMS: frozenset[int] = frozenset({
     # extension binding that collides with a built-in one.
     0x6d,    # XK_m          -> mute_inbound_toggle
     0x4d,    # XK_M          -> mute_inbound_toggle (shifted keysym)
+    0x61,    # XK_a          -> show_about
+    0x41,    # XK_A          -> show_about (shifted keysym)
 })
 _OWN_ALT_CHORD_KEYSYMS: frozenset[int] = frozenset({
     0xff09,  # XK_Tab        -> switch_side

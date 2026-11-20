@@ -34,7 +34,7 @@ class OrcaRemoteExtension(Extension):  # type: ignore[misc,valid-type]
         "NVDA-Remote-compatible remote access for Orca: speech and braille "
         "mirroring over an NVDA Remote v2 relay, plus remote key control."
     )
-    VERSION = "0.9.14"
+    VERSION = "0.9.16"
     AUTHOR = "SerrebiDev and contributors"
     ORGANIZATION = ""
     COPYRIGHT = ""

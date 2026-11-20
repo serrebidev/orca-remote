@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.9.16 -- 2026-11-20
+
+### Fixed
+
+- The test suite is green again on GitHub runners. It had been red
+  since the checks move re-enabled the workflow, hidden behind a
+  collection error: tests/test_about_dialog.py parked a bare gi stub
+  in sys.modules at import time, and its __spec__ = None made
+  test_portal_thread's find_spec("gi") probe raise ValueError during
+  collection, killing the whole run before any test executed. The
+  About test now removes its stubs after importing, the portal probe
+  treats a spec-less stub as "no gi" instead of crashing, and a
+  regression test pins the no-leak behaviour.
+- About shortcut (Orca+Ctrl+Shift+A) now stays local: its keysyms
+  were missing from _OWN_CTRL_SHIFT_CHORD_KEYSYMS, so while focused
+  on the remote machine the chord was forwarded to the remote
+  instead of opening About, and the host side would not refuse it
+  as an inbound synthesis either. The bypass-coverage test that
+  caught this is updated with the new keysym.
+- __init__.py VERSION catches up with the manifest (it lagged at
+  0.9.14 through the 0.9.15 release); both now read 0.9.16.
+
 ## 0.9.15 -- 2026-11-16
 
 - About dialog (Orca+Ctrl+Shift+A): version, description, and every project link as its own focusable button (GitHub, Forgejo, Projects, Telegram, Full credits).

@@ -8,9 +8,23 @@ import sys
 import pytest
 
 
+def _gi_available() -> bool:
+    """True only when a real gi can be found for this interpreter.
+
+    find_spec raises ValueError when another test module has parked a
+    bare stub named "gi" in sys.modules (its __spec__ is None); that
+    means no usable gi here, not a collection error.
+    """
+
+    try:
+        return importlib.util.find_spec("gi") is not None
+    except (ImportError, ValueError):
+        return False
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="requires Linux GLib bindings")
 @pytest.mark.skipif(
-    importlib.util.find_spec("gi") is None,
+    not _gi_available(),
     reason="requires gi (PyGObject) bindings, absent on this interpreter",
 )
 def test_portal_wait_does_not_dispatch_orca_main_context():
